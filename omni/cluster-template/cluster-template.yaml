@@ -1,0 +1,98 @@
+# ==============================================================================
+# omnictl cluster template sync -v -f cluster-template.yaml
+# ==============================================================================
+# Cluster spec for the starter homelab cluster: 3 control planes + 3 workers,
+# no GPU node, no Cloudflare integration. After applying this template, Omni
+# will provision the VMs in Proxmox via the infrastructure provider, install
+# Talos, and assemble the cluster.
+#
+# Critical Talos 1.13 detail — `install-disk` patch is mandatory.
+# Talos 1.13 replaced the old install/upgrade flow with the LifecycleService
+# API, which requires an explicit install.disk in the machine config. Without
+# this patch, fresh VMs boot but control planes get stuck in
+# stage=7 (UPGRADING) with `configuptodate=false` forever — no error
+# surfaces, the cluster simply never bootstraps. virtio-scsi-single + scsi0
+# (the provider default) presents as /dev/sda in all machine classes, so
+# this is safe at cluster scope.
+---
+kind: Cluster
+name: homelab
+labels:
+  cluster-id: "1"
+kubernetes:
+  version: v1.36.0
+talos:
+  version: v1.13.0
+patches:
+  - name: disable-default-cni
+    inline:
+      cluster:
+        network:
+          cni:
+            name: none
+        proxy:
+          disabled: true
+  - name: dns-resolver
+    # Substitute your LAN nameservers if you don't use the gateway as your
+    # DNS server. Pi-hole, AdGuardHome, and Firewalla all live on the
+    # gateway IP in typical homelabs.
+    inline:
+      apiVersion: v1alpha1
+      kind: ResolverConfig
+      nameservers:
+        - address: 1.1.1.1
+        - address: 8.8.8.8
+  - name: install-disk
+    # MANDATORY on Talos 1.13+. See the doc-block at the top of this file
+    # for context. Don't remove this even if your machine class uses a
+    # different disk presentation — override per-machineset instead.
+    inline:
+      machine:
+        install:
+          disk: /dev/sda
+---
+kind: ControlPlane
+machineClass:
+  name: proxmox-control-plane
+  size: 3
+systemExtensions:
+  - siderolabs/iscsi-tools
+  - siderolabs/nfs-utils
+  - siderolabs/nfsrahead
+  # qemu-guest-agent auto-installed by the Proxmox provider — no extension needed.
+  - siderolabs/util-linux-tools
+---
+kind: Workers
+name: workers
+machineClass:
+  name: proxmox-worker
+  size: 3
+systemExtensions:
+  - siderolabs/iscsi-tools
+  - siderolabs/nfs-utils
+  - siderolabs/nfsrahead
+  - siderolabs/util-linux-tools
+patches:
+  - name: longhorn-storage
+    # Longhorn requires /var/lib/longhorn to be a host-path mount with the
+    # `rshared` propagation flag so its CSI driver can publish volumes into
+    # pods. The bind here makes /var/local/longhorn (a writable Talos host
+    # path) appear at /var/lib/longhorn inside the kubelet's view.
+    #
+    # If you're using a multi-disk worker (separate disk for Longhorn data),
+    # see docs/extending/ for the right shape — you'd swap the bind mount
+    # for an actual filesystem mount.
+    inline:
+      machine:
+        kubelet:
+          nodeIP:
+            validSubnets:
+              - __REPLACE_ME_NODE_CIDR__
+          extraMounts:
+            - destination: /var/lib/longhorn
+              type: bind
+              source: /var/local/longhorn
+              options:
+                - bind
+                - rshared
+                - rw

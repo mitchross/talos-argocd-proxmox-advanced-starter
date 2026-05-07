@@ -1,0 +1,121 @@
+#!/bin/bash
+# ==============================================================================
+# Omni SSL Certificate Setup Script (Cloudflare DNS-01)
+# ==============================================================================
+# Automates SSL certificate generation using Certbot with Cloudflare DNS
+# validation for Omni deployment.
+#
+# Prerequisites:
+# - Certbot installed (script will install via snap if missing)
+# - Domain hosted on Cloudflare
+# - Cloudflare API token with DNS:Edit permissions on the zone
+#
+# If you DON'T host your domain on Cloudflare, generate a cert by hand using
+# any Certbot DNS plugin or your preferred ACME tool, then point omni.env's
+# TLS_CERT and TLS_KEY at the resulting fullchain.pem and privkey.pem.
+
+set -euo pipefail
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CLOUDFLARE_CREDS_FILE="$(dirname "$SCRIPT_DIR")/cloudflare.ini"
+
+print_info()  { echo -e "${GREEN}[INFO]${NC} $1"; }
+print_warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
+print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+
+check_command() {
+    if ! command -v "$1" &> /dev/null; then
+        print_error "$1 is not installed"
+        return 1
+    fi
+}
+
+echo "===================================="
+echo "  Omni SSL Certificate Setup"
+echo "===================================="
+echo ""
+
+if [[ $EUID -ne 0 ]]; then
+   print_warn "This script needs root for Certbot operations"
+   print_info "Re-running with sudo..."
+   sudo "$0" "$@"
+   exit $?
+fi
+
+print_info "Checking prerequisites..."
+
+if ! check_command "certbot"; then
+    print_error "Certbot not found. Installing..."
+    snap install --classic certbot
+    ln -s /snap/bin/certbot /usr/bin/certbot
+fi
+
+if ! snap list | grep -q "certbot-dns-cloudflare"; then
+    print_info "Installing Cloudflare DNS plugin..."
+    snap set certbot trust-plugin-with-root=ok
+    snap install certbot-dns-cloudflare
+fi
+
+read -p "Enter your Omni domain name (e.g., omni.example.com): " DOMAIN_NAME
+
+if [[ -z "$DOMAIN_NAME" ]]; then
+    print_error "Domain name is required"
+    exit 1
+fi
+
+print_info "Domain: $DOMAIN_NAME"
+
+read -sp "Enter your Cloudflare API token: " CF_API_TOKEN
+echo ""
+
+if [[ -z "$CF_API_TOKEN" ]]; then
+    print_error "Cloudflare API token is required"
+    exit 1
+fi
+
+print_info "Creating Cloudflare credentials file..."
+mkdir -p "$(dirname "$CLOUDFLARE_CREDS_FILE")"
+cat > "$CLOUDFLARE_CREDS_FILE" <<EOF
+# Cloudflare API token for DNS validation
+dns_cloudflare_api_token = $CF_API_TOKEN
+EOF
+
+chmod 600 "$CLOUDFLARE_CREDS_FILE"
+print_info "Credentials saved to: $CLOUDFLARE_CREDS_FILE"
+
+print_info "Requesting SSL certificate from Let's Encrypt..."
+certbot certonly \
+    --dns-cloudflare \
+    --dns-cloudflare-credentials "$CLOUDFLARE_CREDS_FILE" \
+    -d "$DOMAIN_NAME" \
+    --non-interactive \
+    --agree-tos \
+    --email "${SUDO_USER}@${DOMAIN_NAME}"
+
+if [[ $? -eq 0 ]]; then
+    print_info "Certificate generated successfully!"
+    print_info ""
+    print_info "Certificate files location:"
+    print_info "  - Certificate: /etc/letsencrypt/live/${DOMAIN_NAME}/fullchain.pem"
+    print_info "  - Private Key: /etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem"
+    print_info ""
+    print_info "Add these to your omni.env file:"
+    echo "TLS_CERT=/etc/letsencrypt/live/${DOMAIN_NAME}/fullchain.pem"
+    echo "TLS_KEY=/etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem"
+else
+    print_error "Certificate generation failed"
+    exit 1
+fi
+
+print_info "Setting up automatic certificate renewal..."
+systemctl enable certbot.timer
+systemctl start certbot.timer
+
+print_info ""
+print_info "Setup complete! Certificate will auto-renew before expiration."
+print_warn "Remember to restart Omni after certificate renewal: docker compose restart omni"

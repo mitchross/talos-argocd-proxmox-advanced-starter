@@ -1,0 +1,59 @@
+# ==============================================================================
+# PROXMOX INFRASTRUCTURE PROVIDER CONFIGURATION
+# ==============================================================================
+# Copy this file to config.yaml and fill in your Proxmox details.
+# DO NOT commit config.yaml to version control - it contains credentials.
+#
+# This is the trimmed starter configuration. The upstream provider supports
+# many more features (multi-disk VMs, PCI passthrough, multi-NIC, advanced
+# storage selectors). See:
+#   https://github.com/siderolabs/omni-infra-provider-proxmox
+# Or refer to the source homelab template at:
+#   /docs/extending/adding-gpu-support.md
+# for an example using GPU passthrough and multi-NIC storage networks.
+
+proxmox:
+  # Proxmox API endpoint.
+  # Format: https://<proxmox-host>:<port>/api2/json
+  # Default port: 8006
+  url: "https://__REPLACE_ME_PROXMOX_HOST__:8006/api2/json"
+
+  # Skip SSL certificate verification.
+  # true is the typical homelab default (Proxmox ships a self-signed cert).
+  # Set to false if you've installed a real cert on Proxmox itself.
+  insecureSkipVerify: true
+
+  # ==============================================================================
+  # AUTHENTICATION — pick ONE of the two methods below.
+  # ==============================================================================
+
+  # OPTION 1 (RECOMMENDED): API Token
+  # ---------------------------------
+  # Create in Proxmox: Datacenter → Permissions → API Tokens
+  # IMPORTANT: uncheck "Privilege Separation" so the token inherits the user's
+  # full permissions (or grant the role explicitly to the token).
+  apiToken: "__REPLACE_ME_PROXMOX_TOKEN__"
+  # apiToken format: "user@realm!tokenid=token-secret"
+  # Example:         "root@pam!iac=01234567-89ab-cdef-0123-456789abcdef"
+
+  # OPTION 2: Username/Password (easier for testing; less secure)
+  # -------------------------------------------------------------
+  # Comment out apiToken above and uncomment these:
+  # username: "root"
+  # password: "your-proxmox-password-here"
+  # realm: "pam"  # pam = Linux users, pve = Proxmox users
+
+# ==============================================================================
+# Permissions for a non-root user (recommended for production)
+# ==============================================================================
+# If you'd rather not use root@pam, create a dedicated `omni@pve` user with
+# at least these privileges (the easiest path is to grant the built-in
+# `PVEVMAdmin` role plus `Datastore.AllocateSpace` and `Datastore.Audit`):
+#
+#   pveum user add omni@pve
+#   pveum passwd omni@pve
+#   pveum aclmod / -user omni@pve -role PVEVMAdmin
+#   pveum role add OmniProvider -privs "Datastore.AllocateSpace Datastore.Audit"
+#   pveum aclmod /storage -user omni@pve -role OmniProvider
+#
+# Then create the API token under that user and update apiToken above.

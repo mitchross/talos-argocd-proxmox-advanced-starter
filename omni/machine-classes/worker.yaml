@@ -1,0 +1,37 @@
+---
+# Apply with: omnictl apply -f worker.yaml
+#
+# General-purpose worker VM specs. 8 cores, 32 GB RAM, 200 GB disk is a
+# reasonable starting point for the GitOps stack plus the three demo apps.
+# Bump cores/memory/disk_size if you plan to run real workloads on top.
+#
+# This starter ships single-NIC workers. If you have a separate storage
+# network (10G NIC to TrueNAS over vmbr1, etc.), see
+#   docs/extending/
+# for the additional_nics pattern.
+#
+# Multi-disk workers (separate disk for /var/lib/longhorn, etc.) and GPU
+# workers also have their own recipes under docs/extending/.
+metadata:
+  namespace: default
+  type: MachineClasses.omni.sidero.dev
+  id: proxmox-worker
+spec:
+  matchlabels: []
+  autoprovision:
+    providerid: proxmox
+    kernelargs: []
+    metavalues: []
+    providerdata: |
+      cores: 8
+      sockets: 1
+      memory: 32000
+      disk_size: 200
+      network_bridge: vmbr0
+      storage_selector: name == "__REPLACE_ME_PROXMOX_STORAGE_POOL__"
+      # Disk performance — safe defaults for SSD/NVMe-backed pools.
+      disk_ssd: true
+      disk_discard: true
+      disk_iothread: true
+      disk_cache: none
+      disk_aio: io_uring
