@@ -1,0 +1,56 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: cloudnative-pg
+commonLabels:
+  app.kubernetes.io/name: cloudnative-pg
+  app.kubernetes.io/managed-by: argocd
+commonAnnotations:
+  argocd.argoproj.io/sync-wave: "-10"
+
+resources:
+  - namespace.yaml
+  - clusterrole-full-rbac.yaml
+  - clusterrolebinding-full-rbac.yaml
+
+# CNPG ships large CRDs (clusters.postgresql.cnpg.io is ~450KB,
+# poolers.postgresql.cnpg.io is ~650KB) that exceed the 256KB
+# `kubectl.kubernetes.io/last-applied-configuration` cap if ArgoCD
+# falls back to client-side apply. Per-resource sync-options forces
+# ServerSideApply on these specific CRDs even when Argo's manager
+# state drifts. Same defensive pattern as ESO 2.4.x — see
+# infrastructure/controllers/external-secrets/kustomization.yaml.
+patches:
+  - target:
+      kind: CustomResourceDefinition
+      name: clusters.postgresql.cnpg.io
+    patch: |-
+      - op: add
+        path: /metadata/annotations/argocd.argoproj.io~1sync-options
+        value: ServerSideApply=true,Replace=true
+  - target:
+      kind: CustomResourceDefinition
+      name: poolers.postgresql.cnpg.io
+    patch: |-
+      - op: add
+        path: /metadata/annotations/argocd.argoproj.io~1sync-options
+        value: ServerSideApply=true,Replace=true
+
+# CNPG-operator chart pinned 0.28.0 (matches source).
+# JOB_TTL_SECONDS_AFTER_FINISHED keeps backup/restore Job clutter
+# in check — without it, the cnpg ns accumulates completed Jobs
+# indefinitely.
+helmCharts:
+  - name: cloudnative-pg
+    repo: https://cloudnative-pg.github.io/charts
+    version: 0.28.0
+    releaseName: cloudnative-pg-operator
+    namespace: cloudnative-pg
+    includeCRDs: true
+    valuesInline:
+      config:
+        data:
+          ENABLE_AZURE_PVC_UPDATES: "false"
+          INHERITED_ANNOTATIONS: "argocd.argoproj.io/sync-wave"
+          INHERITED_LABELS: "app.kubernetes.io/managed-by"
+          JOB_TTL_SECONDS_AFTER_FINISHED: "3600"
+          FAILED_JOB_TTL_SECONDS_AFTER_FINISHED: "7200"

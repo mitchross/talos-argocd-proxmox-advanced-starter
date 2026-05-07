@@ -1,0 +1,78 @@
+---
+# Base CNPG Cluster manifest. Intentionally NO `bootstrap` stanza —
+# overlays in ../overlays/{initdb,recovery}/ patch in the appropriate
+# bootstrap mode.
+#
+# Why the overlay pattern?
+#   - In normal operation (fresh install / steady-state), the cluster
+#     uses `bootstrap.initdb` to provision a new database.
+#   - In disaster recovery, you swap to `bootstrap.recovery` referencing
+#     the Barman ObjectStore — CNPG re-creates the cluster from the
+#     latest base backup + replays WAL.
+#   - Both modes share the same Cluster spec otherwise (storage,
+#     resources, plugin, monitoring).
+#   - Putting the diff in overlays keeps git diff focused on the actual
+#     DR decision instead of the surrounding boilerplate, and lets the
+#     `apps/postgres-demo/kustomization.yaml` swap modes with a
+#     one-line change (`overlays/initdb` → `overlays/recovery`).
+#
+# Plugin shape (replaces the deprecated `spec.backup.barmanObjectStore`,
+# removed in CNPG 1.30.0):
+#   spec.plugins[]
+#     name: barman-cloud.cloudnative-pg.io
+#     isWALArchiver: true   ← critical, only one Cluster per ObjectStore
+#                              should be the active WAL writer
+#     parameters:
+#       barmanObjectName: postgres-demo-backups   ← name of ObjectStore CR
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: postgres-demo
+  namespace: postgres-demo
+  labels:
+    app: postgres-demo
+spec:
+  instances: 1
+
+  # Pin to a recent stable Postgres major. CNPG bumps Postgres minor/
+  # patch independently of the operator chart — this image tag tracks
+  # both.
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.6
+
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 250m
+    limits:
+      memory: 1Gi
+
+  postgresql:
+    parameters:
+      shared_buffers: "128MB"
+      max_wal_size: "512MB"
+      max_connections: "100"
+      wal_compression: "on"
+
+  storage:
+    size: 5Gi
+    storageClass: longhorn
+  walStorage:
+    size: 5Gi
+    storageClass: longhorn
+
+  enableSuperuserAccess: true
+
+  monitoring:
+    # Picked up by kube-prometheus-stack's PodMonitor selector
+    # (release: kube-prometheus-stack via the chart's defaults).
+    enablePodMonitor: true
+
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      # The active write target for WAL archiving. If you ever bring up
+      # a replica Cluster pointing at the same ObjectStore (PITR drill,
+      # cross-cluster recovery), set isWALArchiver: false on the replica
+      # — only one Cluster per ObjectStore should be archiving WAL.
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: postgres-demo-backups

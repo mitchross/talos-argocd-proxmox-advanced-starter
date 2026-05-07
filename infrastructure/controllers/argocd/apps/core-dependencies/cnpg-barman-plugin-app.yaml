@@ -1,0 +1,53 @@
+# CloudNativePG Barman Cloud Plugin — standalone Wave 3 Application.
+#
+# Why standalone (not via the database AppSet):
+#   1. The database AppSet glob is `infrastructure/database/*/*` (two
+#      levels). cnpg-barman-plugin lives one level deep
+#      (`infrastructure/database/cnpg-barman-plugin/`), so it's NOT
+#      picked up by the AppSet — by design, since this is operator
+#      infrastructure, not a database instance.
+#   2. The plugin must be installed BEFORE any Cluster CR references
+#      its CRD via `spec.plugins[].name = barman-cloud.cloudnative-pg.io`.
+#      Wave 3 puts it ahead of the Wave-4 database AppSet (CNPG operator)
+#      and the Wave-6 apps AppSet (postgres-demo Cluster).
+#   3. The plugin manifest targets the cnpg-system namespace, not
+#      `cnpg-barman-plugin` (the directory basename) — using a
+#      standalone Application lets us specify destination.namespace
+#      explicitly.
+#
+# Per conductor revision 2026-05-07: postgres-demo ships with backup/
+# restore by default, so this plugin is core infrastructure for the
+# starter, not optional.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cnpg-barman-plugin
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+  labels:
+    app.kubernetes.io/part-of: infrastructure
+spec:
+  project: infrastructure
+  source:
+    repoURL: __REPLACE_ME_GIT_REPO_URL__
+    targetRevision: __REPLACE_ME_GIT_BRANCH__
+    path: infrastructure/database/cnpg-barman-plugin
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cnpg-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: -1
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 5m

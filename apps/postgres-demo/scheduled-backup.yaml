@@ -1,0 +1,39 @@
+---
+# CNPG ScheduledBackup — triggers a base backup on a cron schedule.
+# WAL archiving runs continuously via the plugin's WAL archiver mode
+# (set on the Cluster's `spec.plugins[].isWALArchiver: true`).
+#
+# Schedule format: 6-field CNPG cron (NOT 5-field POSIX). First field
+# is SECONDS. So "0 0 */6 * * *" = every 6 hours on the hour, with
+# 0-second offset. (5-field "0 */6 * * *" would fire every 6 minutes
+# at xx:00, contributing to etcd write-storms — bit the source cluster
+# 2026-04-19 with WAL chains. Don't drop the seconds field.)
+#
+# Combined with `retentionPolicy: "7d"` on the ObjectStore, this gives
+# you ~28 base backups in MinIO at any moment plus the WAL chains
+# between them — more than enough to do PITR to any point in the
+# past week.
+#
+# `immediate: true` triggers a backup as soon as the ScheduledBackup
+# resource is admitted, which means the demo's first backup runs
+# within minutes of `kubectl apply`-ing — no waiting around for the
+# next cron tick to verify backups work.
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: postgres-demo-6h-backup
+  namespace: postgres-demo
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  schedule: "0 0 */6 * * *"
+  backupOwnerReference: self
+  cluster:
+    name: postgres-demo
+  immediate: true
+  # Plugin-mode backup. Method: plugin tells CNPG to delegate to the
+  # barman-cloud plugin, which uploads to the ObjectStore named in the
+  # Cluster's plugin parameters.
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io

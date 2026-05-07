@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# postgres-demo — CloudNativePG cluster with continuous Barman backup
+# to in-cluster MinIO.
+#
+# Active bootstrap overlay: `overlays/initdb` (fresh cluster).
+# To switch into DR recovery mode, comment out `overlays/initdb` below
+# and uncomment `overlays/recovery`. See README.md for the full DR
+# walkthrough.
+namespace: postgres-demo
+
+resources:
+  - namespace.yaml
+  - minio
+  - objectstore.yaml
+  - overlays/initdb           # ← ACTIVE: fresh DB / steady-state
+  # - overlays/recovery       # swap to this for DR (restore from MinIO)
+  - scheduled-backup.yaml

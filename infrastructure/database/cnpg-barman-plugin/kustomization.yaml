@@ -1,0 +1,32 @@
+# CloudNativePG Barman Cloud Plugin
+#
+# Provides the `ObjectStore` CRD + a plugin sidecar/Service that the CNPG
+# operator reaches via gRPC. Cluster CRs reference the plugin in their
+# `spec.plugins[]` block — the plugin handles WAL archiving and base
+# backups against any S3-compatible object store. Replaces the
+# deprecated in-Cluster `spec.backup.barmanObjectStore` (removed in
+# CNPG 1.30.0).
+#
+# Pinned to v0.12.0 (latest stable as of writing). Bump the URL tag to
+# upgrade — Renovate will manage this in 2j's renovate.json.
+#
+# Why URL fetch instead of vendored manifest: upstream doesn't publish
+# a Helm chart, and the raw manifest is ~1100 lines (mostly CRD OpenAPI
+# schema). Pulling from the tag keeps the repo lean and is consistent
+# with how Cilium / CNPG-operator are pinned (chart name + version, not
+# vendored YAML).
+#
+# Wave: cross-Application ordering is handled by
+# `infrastructure/controllers/argocd/apps/core-dependencies/cnpg-barman
+# -plugin-app.yaml` (Application sync-wave 3). The internal -9 here is
+# the per-resource sub-wave inside this Application — the manifest
+# defines a Namespace + CRD + Deployment + Service, and the in-bundle
+# ordering is handled by the upstream manifest.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+commonAnnotations:
+  argocd.argoproj.io/sync-wave: "-9"
+
+resources:
+  - https://github.com/cloudnative-pg/plugin-barman-cloud/releases/download/v0.12.0/manifest.yaml

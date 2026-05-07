@@ -1,0 +1,20 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# In-cluster MinIO for postgres-demo's Barman ObjectStore. NOT meant
+# for general-purpose use — sized for a single demo Cluster's backup
+# stream. If you want a real cluster-wide MinIO, lift this into
+# `infrastructure/storage/minio/` and configure its credentials via
+# ESO templating from your master kopia/secrets.
+#
+# Sync ordering inside this kustomization (per-resource sync-wave
+# annotations on each manifest):
+#   -3: sealed-credentials (must be unwrapped first)
+#   -2: pvc + deployment + service (MinIO comes up)
+#   -1: bootstrap-job (creates the cnpg-backups bucket)
+resources:
+  - sealed-credentials.yaml
+  - pvc.yaml
+  - deployment.yaml
+  - service.yaml
+  - bootstrap-job.yaml

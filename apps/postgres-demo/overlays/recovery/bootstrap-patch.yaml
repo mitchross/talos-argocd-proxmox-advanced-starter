@@ -1,0 +1,50 @@
+---
+# Recovery overlay — DO NOT USE during normal operation. Swap the
+# active overlay in apps/postgres-demo/kustomization.yaml from
+# `overlays/initdb` to `overlays/recovery` ONLY when you've decided
+# the existing Cluster is unrecoverable and you need to restore from
+# Barman.
+#
+# What this does:
+#   - bootstrap.recovery references an externalCluster definition that
+#     points at the same Barman ObjectStore the live Cluster has been
+#     archiving to.
+#   - On first sync after the overlay swap, CNPG provisions a fresh
+#     Cluster from the latest base backup, then replays WAL up to
+#     the latest archived WAL segment.
+#   - Once recovery completes (Cluster shows `Healthy`), swap the
+#     active overlay BACK to `overlays/initdb`. Despite the name,
+#     CNPG ignores the `initdb` stanza on an already-bootstrapped
+#     Cluster (initdb is a creation-time-only field), so this is
+#     a no-op — but it keeps git matching the steady-state
+#     configuration.
+#
+# Point-in-time recovery (target a specific timestamp instead of
+# latest):
+#   Add a `recoveryTarget` block with `targetTime`. Example commented
+#   below — uncomment + adjust to test PITR.
+#
+# See apps/postgres-demo/README.md for the full DR walkthrough.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: postgres-demo
+spec:
+  bootstrap:
+    recovery:
+      source: postgres-demo-recovery-source
+      database: demo
+      owner: demoapp
+      # Uncomment + edit to test point-in-time recovery:
+      # recoveryTarget:
+      #   targetTime: "2026-05-07 14:30:00"
+  externalClusters:
+    - name: postgres-demo-recovery-source
+      plugin:
+        # Same plugin reference as the live Cluster, BUT the
+        # externalCluster context tells CNPG to read from the
+        # ObjectStore (not write to it). The plugin sidecar handles
+        # both directions.
+        name: barman-cloud.cloudnative-pg.io
+        parameters:
+          barmanObjectName: postgres-demo-backups

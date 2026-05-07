@@ -21,6 +21,14 @@ resources:
   - core-dependencies/pvc-plumber-app.yaml
 
   # ==========================================================================
+  # Wave 3 — CNPG-Barman ObjectStore plugin. Standalone (not via AppSet)
+  # because the manifest targets cnpg-system, and it must precede both
+  # the Wave-4 CNPG operator (database AppSet) and the Wave-6
+  # postgres-demo Cluster CR which references the plugin.
+  # ==========================================================================
+  - core-dependencies/cnpg-barman-plugin-app.yaml
+
+  # ==========================================================================
   # Waves 4-6 — broad directory discovery via ApplicationSets.
   # ==========================================================================
   - appsets/infrastructure-appset.yaml
