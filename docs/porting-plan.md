@@ -6,7 +6,10 @@
 >
 > **Core principle**: opinionated minimalism. Where the source cluster has 8 examples we ship 1; where it has paid services we swap free-tier defaults; where it has GPU/proprietary apps we ship platform-feature demos.
 >
-> **Source-cluster scope discipline (per conductor)**: any stale Kyverno strings I encounter in the source cluster while porting (beyond the two already known — `docs/argocd-entrypoints.md` and `scripts/bootstrap-argocd.sh` echo strings) get **flagged** in my final Phase-1 report for the conductor to sweep on `refactor-replace-kyverno`, **not** patched by me. The starter is the only artifact I write to.
+> **Source-cluster scope discipline (per conductor)**:
+>
+> 1. **Canonicality**: the working cluster (`talos-argocd-proxmox` on `refactor-replace-kyverno`) is the canonical source of truth. When the source cluster and either upstream starter (`sidero-omni-talos-proxmox-starter`, `talos-argocd-proxmox-starter`) disagree on Talos / machine-set / Omni / manifest / script details — **source cluster wins**. The upstream starters are stale relative to the post-Kyverno-removal architecture; the user maintains the source cluster as their working homelab. Already applied correctly to the Talos 1.13 install-disk patch (caught from source, ignored sidero-starter's lack); making it the explicit rule going forward.
+> 2. **Read-only on the source**: any stale Kyverno strings I encounter in the source cluster while porting (beyond the two already known — `docs/argocd-entrypoints.md` and `scripts/bootstrap-argocd.sh` echo strings) get **flagged** in my final Phase-1 report for the conductor to sweep on `refactor-replace-kyverno`, **not** patched by me. The starter is the only artifact I write to.
 
 ---
 
@@ -134,7 +137,7 @@ talos-argocd-proxmox-advanced-starter/
 | **infrastructure/controllers/argocd/apps/projects.yaml** | source | **ADAPT** | Substitute `__REPLACE_ME_GIT_REPO_URL__` for `sourceRepos`. Three projects: infrastructure / monitoring / my-apps. |
 | **infrastructure/controllers/argocd/apps/bootstrap/** | source | **ADAPT** | Replace `1passwordconnect.yaml` with `sealed-secrets-app.yaml`. Drop `external-secrets.yaml`. Add `cert-manager-app.yaml` to W0 (needed by W1 plumber webhook TLS — see Sync Wave note in §5). Keep `argocd.yaml`, `cilium-app.yaml`. |
 | **infrastructure/controllers/argocd/apps/core-dependencies/** | source | **COPY** | All four (longhorn, snapshot-controller, volsync, pvc-plumber). Substitute repo URL. |
-| **infrastructure/controllers/argocd/apps/custom-entrypoints/** | source | **SKIP** | The starter does not ship CNPG-Barman, KEDA, Temporal, OTEL. CNPG operator goes through the regular AppSet at W4 (no Barman plugin needed for default starter — the postgres-demo can use a CNPG ObjectStore pointed at MinIO/S3 placeholder, or initdb-only with no backups by default). |
+| **infrastructure/controllers/argocd/apps/custom-entrypoints/** | source | **PARTIAL** | Source ships 4 standalone apps here (cnpg-barman-plugin, keda, temporal-worker-controller, opentelemetry-operator). Starter ships only **cnpg-barman-plugin** (now W3, per conductor revision 2026-05-07 — needed because postgres-demo ships Barman backups by default). KEDA, Temporal, OTEL stay SKIP — none of the demos require them. The plugin App will be added during Phase 2h alongside the postgres-demo work, not in the existing 2b commit's `apps/kustomization.yaml` resource list (which still lists only bootstrap/ and core-dependencies/longhorn-snapshot-volsync-plumber). 2h commit will add an entry to `apps/kustomization.yaml` for the plugin App and the manifests under `infrastructure/database/cnpg-barman-plugin/`. |
 | **infrastructure/controllers/argocd/apps/appsets/infrastructure-appset.yaml** | source | **ADAPT** | Hand-listed paths (the source cluster intentionally lists explicit paths, not glob, to dodge a known repo-server cache loop). Reduced list: `cert-manager` (already W0; remove from here), `csi-driver-nfs`, `gateway`. That's it for the starter's W4 AppSet. |
 | **infrastructure/controllers/argocd/apps/appsets/database-appset.yaml** | source | **ADAPT** | Glob `infrastructure/database/*/*` only matches `cnpg-operator/` for now. `selfHeal: false` for DR is preserved. |
 | **infrastructure/controllers/argocd/apps/appsets/monitoring-appset.yaml** | source | **COPY** | Glob `monitoring/*` matches kube-prometheus-stack and loki-stack. |
@@ -151,6 +154,7 @@ talos-argocd-proxmox-advanced-starter/
 | **infrastructure/storage/volsync/** | source | **ADAPT** | Strip the `kopia-maintenance-cronjob.yaml` of any 1Password ExternalSecret refs; replace with SealedSecret. |
 | **infrastructure/storage/csi-driver-nfs/** | source | **COPY** | Helm chart pinned. |
 | **infrastructure/database/cnpg-operator/** | source `infrastructure/database/cloudnative-pg/cloudnative-pg-operator/` | **COPY** | Just the operator install. CNPG cluster instances live in `apps/postgres-demo/`. |
+| **infrastructure/database/cnpg-barman-plugin/** | source `infrastructure/database/cnpg-barman-plugin/` | **COPY** | The Barman ObjectStore plugin that postgres-demo's `Cluster` CR references for backup/recovery. Wave 3 standalone Application (`core-dependencies/cnpg-barman-plugin-app.yaml`) so it's installed before the Cluster CR comes up at W6. Per conductor revision 2026-05-07. |
 | **monitoring/kube-prometheus-stack/** | source `monitoring/prometheus-stack/` | **ADAPT** | Drop the Grafana sidecar dashboard ConfigMaps that pull homelab-specific metrics. Default to no persistent storage for AlertManager (or 512Mi). Pin `kube-prometheus-stack` chart to a stable minor (84.x — the source has 82, 83, 84 charts vendored; pick 84.x). Strip 1Password-derived Grafana admin password — use sealed-secret. |
 | **monitoring/loki-stack/** | source `monitoring/loki-stack/` | **ADAPT** | Default to filesystem storage (no S3). 7-day retention. |
 | **monitoring/tempo/, monitoring/k8sgpt/, monitoring/pod-cleanup/** | source | **SKIP** | Out of starter scope. |
@@ -171,6 +175,9 @@ talos-argocd-proxmox-advanced-starter/
 | **docs/extending/swapping-secret-backend.md** | source `infrastructure/controllers/1passwordconnect/` + ESO ClusterSecretStore | **STUB (Phase 1) → ADAPT (Phase 3)** | Phase 1 ships a one-paragraph stub: "to swap sealed-secrets for ESO with provider X (Vault / 1Password / AWS Secrets Manager / GCP Secret Manager), see [PR #N for the worked recipe]." The full recipe walkthrough lands in Phase 3 / post-launch. Per conductor, 2026-05-07. |
 | **docs/extending/adding-an-app.md** | NEW (cookbook) | **NEW** | Add directory + kustomization.yaml + label PVC = deployed. |
 | **docs/extending/disaster-recovery.md** | source `docs/cnpg-disaster-recovery.md` + the deadlock-recovery section of `pvc-plumber-walkthrough.md` | **ADAPT** | Walkthrough: cluster lost, restore from Kopia + restore from Barman. |
+| **docs/extending/external-s3-backend.md** | NEW | **NEW (Phase 3)** | Recipe — swap the in-cluster MinIO that postgres-demo's CNPG Cluster uses for AWS S3 / Cloudflare R2 / Backblaze B2 / external MinIO. Single sealed-secret swap + ObjectStore endpoint URL change. Per conductor revision 2026-05-07. |
+| **docs/extending/scaling-to-ha.md** | NEW | **NEW (Phase 3)** | Recipe — go from the starter's 1 CP + 2 worker default to 3 CP + N workers HA. Cluster template count change, post-bootstrap CP join, optional drain/replace of the original CP. Already promised in README's prereq line; placeholder for it lives at `docs/extending/scaling-to-ha.md`. |
+| **docs/source-cluster-comparison.md** | NEW | **NEW (Phase 3 — final deliverable)** | The "what's same / what's different / what's intentionally dropped" reference between this starter and the source homelab cluster. Sections: (1) Components in source but NOT starter (paid services, hardware-specific, proprietary, scope cuts); (2) Components in starter but NOT source (sealed-secrets, in-cluster MinIO, the 3 demo apps); (3) Patterns preserved verbatim (sync waves, AppSet directory discovery, GitOps self-management, magic `backup: hourly` label, fail-closed admission, named Service ports, Talos 1.13 install-disk patch); (4) Patterns simplified (apps-appset glob `apps/*` not `apps/*/*`, single CP + 2 workers, chart-default resources, placeholder substitution model); (5) Patterns deferred to recipes (GPU, Cloudflare, ESO+1Password, KEDA, Temporal, OpenTelemetry, in-cluster registry). Per conductor revision 2026-05-07. As I work each phase I jot quick notes to a gitignored `.compare-notes.md` so reconstructing rationale at the end is cheap. |
 
 ---
 
@@ -191,12 +198,20 @@ Three apps, each demonstrating exactly one platform feature.
 - **Why it teaches**: this is THE platform feature. After the user sees the PVC populate and `kubectl logs` the pvc-plumber pod showing the backup schedule, the value of the operator is obvious.
 - **Source**: handcrafted. The source cluster's project-zomboid PVC pattern is the reference but we don't want a game server in the starter.
 
-### `apps/postgres-demo/` — CNPG cluster demo
-- **What it shows**: a 1-replica CloudNativePG `Cluster` resource using Barman ObjectStore plugin pointed at an in-cluster MinIO **OR** initdb-only (no backups).
-- **Decision needed**: in-cluster MinIO (extra moving piece) vs. initdb-only (boring but works). **Recommendation: initdb-only by default**, with a `--enable-backups` flag in the adapt script that wires Barman + MinIO. Rationale: CNPG already proves "the database operator works"; Barman+MinIO is "DR for stateful data" which is a separate teaching unit (and the pvc-plumber demo already covers PVC-level DR). DB DR is documented in `docs/extending/disaster-recovery.md` as a recipe. **Flag for conductor**: confirm initdb-only-default is acceptable.
-- **What's in it**: `namespace.yaml`, `cluster.yaml` (CNPG `Cluster` kind, 1 instance, 5Gi storage, longhorn StorageClass), `service-bouncer.yaml` (PgBouncer optional? — skip in default), `kustomization.yaml`. No HTTPRoute (Postgres doesn't need one; demonstrates non-HTTP workload pattern).
-- **Why it teaches**: that the directory-discovery AppSet model handles operator-CR resources (CNPG `Cluster`) just as cleanly as Deployments.
-- **Source**: handcrafted, referencing source `infrastructure/database/cloudnative-pg/immich/` for shape.
+### `apps/postgres-demo/` — CNPG cluster + Barman backup demo
+- **What it shows**: a 1-replica CloudNativePG `Cluster` wired to the **CNPG-Barman ObjectStore plugin** for continuous WAL archiving + scheduled base backups, with **in-cluster MinIO** as the S3 backend. Demonstrates database-native DR end-to-end.
+- **Decision history**: original Phase-1 plan defaulted to `initdb`-only with a `--enable-backups` flag. **Reversed by conductor 2026-05-07** — for an *advanced* starter, initdb-only is a toy demo; CNPG-with-backup-and-restore is the platform pattern users actually need. No flag, no opt-in: backups ship by default.
+- **What's in it**:
+  - `namespace.yaml`
+  - `minio.yaml` — single-Deployment MinIO with persistent PVC (longhorn StorageClass), Service, and a sealed-secret containing admin creds
+  - `minio-bootstrap-job.yaml` — Job that runs once to create the `cnpg-backups` bucket via `mc` CLI (idempotent, ArgoCD hook annotated)
+  - `cluster.yaml` — CNPG `Cluster` kind, 1 instance, 5Gi storage, longhorn StorageClass, `bootstrap.initdb` for fresh install, `backup.barmanObjectStore` (or via plugin) referencing the in-cluster MinIO
+  - `scheduled-backup.yaml` — CNPG `ScheduledBackup` running every 6h with 7-day retention
+  - `kustomization.yaml`
+  - `README.md` — kubectl commands to verify backup completion (`kubectl get backup -n postgres-demo`), trigger a manual backup, do point-in-time recovery via `bootstrap.recovery`
+- **Why it teaches**: (1) directory-discovery AppSet handles operator-CRs as cleanly as Deployments; (2) database-native DR (Barman) is a separate, complementary system to PVC-level DR (pvc-plumber/Kopia/VolSync) — the starter teaches both; (3) the ObjectStore-on-MinIO shape is the same pattern that swaps cleanly to AWS S3 / Cloudflare R2 / Backblaze B2 / external MinIO with a single env-var change (recipe: `docs/extending/external-s3-backend.md`).
+- **Source**: handcrafted, referencing source `infrastructure/database/cloudnative-pg/immich/` (Cluster shape) and `infrastructure/database/cnpg-barman-plugin/` (plugin install) for patterns. Adds the in-cluster MinIO that the source homelab doesn't need (it has RustFS S3 already on TrueNAS).
+- **Effort delta from original spec**: ~3 extra manifests, ~30min more work. Worth it for "advanced" starter framing.
 
 ---
 
@@ -241,7 +256,7 @@ The starter compresses to 6 waves (W0–W6). Cert-manager CRDs install at W0 (vi
 | **1** | `core-dependencies/volsync-app.yaml` | Backup engine |
 | **1** | `core-dependencies/pvc-plumber-app.yaml` | Operator deployment + selfSigned Issuer + Certificate (controller-runtime starts here, but webhooks are NOT yet registered) |
 | **2** | `pvc-plumber/webhooks.yaml` (Mutating + Validating WebhookConfigurations) | Registered after the operator pod is healthy. **CRITICAL**: if registered at W1 alongside the deployment, a slow first-boot can deadlock everything because the webhook fails closed before the pod is ready. The source cluster solved this by putting the webhook configs at W2 — preserving. |
-| **3** | (reserved — empty in default starter) | Source cluster uses W3 for CNPG-Barman plugin; starter skips Barman. |
+| **3** | `core-dependencies/cnpg-barman-plugin-app.yaml` | CNPG-Barman ObjectStore plugin. Standalone Application (not via AppSet) so it's guaranteed installed before W4 discovers the CNPG operator and W6 deploys postgres-demo's Cluster CR (which references the plugin). Per conductor revision 2026-05-07 — original plan reserved this wave empty under the "no Barman in default starter" assumption; reversed because postgres-demo now ships with backup/restore as a first-class platform demo. |
 | **4** | `appsets/infrastructure-appset.yaml` | Discovers `cert-manager`, `csi-driver-nfs`, `gateway` |
 | **4** | `appsets/database-appset.yaml` | Discovers `cnpg-operator/*` |
 | **5** | `appsets/monitoring-appset.yaml` | Discovers `kube-prometheus-stack`, `loki-stack` |
