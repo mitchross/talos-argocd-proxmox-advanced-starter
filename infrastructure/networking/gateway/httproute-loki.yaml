@@ -1,0 +1,42 @@
+---
+# Loki HTTP API exposed at loki.<your-domain>.
+#
+# Loki's HTTP push API and query API both live behind the
+# `loki-gateway` Service that the Helm chart deploys (an nginx in front
+# of the singleBinary StatefulSet). Exposing it via HTTPRoute makes it
+# reachable for log shippers (Promtail, Alloy, Vector, OTEL Collector,
+# Fluent Bit, …) running outside the cluster, and as a Grafana
+# datasource if Grafana is run elsewhere.
+#
+# WARNING: no auth by default. The starter's Loki is single-tenant and
+# unauthenticated (`auth_enabled: false` in monitoring/loki-stack/
+# values.yaml). Anyone on the LAN can write to or read from it via
+# this URL. If that matters, layer an auth proxy or comment this file
+# out + drop from kustomization.yaml.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: loki
+  namespace: loki-stack
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: gateway-internal
+      namespace: gateway
+      sectionName: https
+  hostnames:
+    - "loki.__REPLACE_ME_DOMAIN__"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: loki-gateway
+          # Chart-named port `http-metrics` (80) — the gateway nginx
+          # proxies all Loki HTTP API paths through this single port.
+          port: 80
+          weight: 1

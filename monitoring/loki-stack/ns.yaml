@@ -1,0 +1,11 @@
+# Namespace for the Loki stack.
+#
+# Directory name `loki-stack` (matches monitoring AppSet's
+# `path.basename` namespace mapping) — preserved from source for
+# convention with kube-prometheus-stack's similar shape.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: loki-stack
+  labels:
+    name: loki-stack

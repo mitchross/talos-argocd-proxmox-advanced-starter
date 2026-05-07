@@ -1,0 +1,35 @@
+---
+# Prometheus UI exposed at prometheus.<your-domain>.
+#
+# WARNING: this UI has NO authentication. It exposes raw metrics, ad-hoc
+# PromQL queries, and the targets list. Access on the LAN only; do not
+# expose externally without an auth proxy in front. For starter clusters
+# behind untrusted devices, the safer choice is port-forward access only
+# — comment this file out and remove from kustomization.yaml.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: prometheus
+  namespace: kube-prometheus-stack
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: gateway-internal
+      namespace: gateway
+      sectionName: https
+  hostnames:
+    - "prometheus.__REPLACE_ME_DOMAIN__"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - group: ""
+          kind: Service
+          # Chart names this Service `kube-prometheus-stack-prometheus`
+          # with a named port `http-web` (9090).
+          name: kube-prometheus-stack-prometheus
+          port: 9090
+          weight: 1

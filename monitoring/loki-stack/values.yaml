@@ -1,0 +1,167 @@
+# Loki values for the starter cluster.
+#
+# Opinionated minimalism: SingleBinary deployment mode with filesystem
+# storage. The source homelab runs SimpleScalable mode against an
+# external S3 endpoint (RustFS on TrueNAS), but a starter cluster has
+# no S3 backend by default. SingleBinary + filesystem PVC is the simplest
+# Loki shape that "just works" on a fresh cluster — no minio, no S3
+# credentials, no ExternalSecret. Rolling forward to S3 is documented as
+# a recipe in docs/extending/ (when that recipe lands).
+#
+# Retention is 7 days (168h). Bump in `limits_config.retention_period`
+# when log history matters more than disk usage.
+#
+# Storage: 10Gi Longhorn PVC, ReadWriteOnce. Backup-exempt (logs are
+# ephemeral; if your cluster is gone, your last week of logs are
+# already replaceable by the next run). Same design call as Prometheus's
+# PVC.
+
+deploymentMode: SingleBinary
+
+loki:
+  # SingleBinary mode requires replication_factor: 1 (no peer replicas
+  # to write to in single-pod mode — chart will panic at startup if
+  # this and the singleBinary.replicas count disagree).
+  commonConfig:
+    path_prefix: /var/loki
+    replication_factor: 1
+  # Filesystem storage: chunks live on the PVC mounted at /var/loki/chunks.
+  # No bucketNames / s3 stanza needed; the chart auto-configures the
+  # filesystem backend when storage.type=filesystem.
+  storage:
+    type: filesystem
+  schemaConfig:
+    configs:
+      - from: "2024-04-01"
+        store: tsdb
+        # In SingleBinary + filesystem mode, the `object_store: filesystem`
+        # value is required to align with `storage.type: filesystem`. A
+        # mismatch (e.g. `object_store: s3` with `storage.type: filesystem`)
+        # silently swallows writes.
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+  ingester:
+    chunk_encoding: snappy
+  pattern_ingester:
+    enabled: true
+  limits_config:
+    allow_structured_metadata: true
+    volume_enabled: true
+    # 7-day retention. Loki's compactor evicts older chunks during
+    # the next maintenance window. To extend: increase here AND ensure
+    # singleBinary.persistence.size below has headroom.
+    retention_period: 168h
+  # Auth disabled to keep the starter footprint small. The source
+  # cluster runs with an X-Scope-OrgID header (multi-tenant mode); the
+  # starter doesn't need that complexity. To enable, add an `auth_enabled:
+  # true` block plus the corresponding tenant_id config.
+  auth_enabled: false
+
+# ---------------------------------------------------------------------------
+# SingleBinary — the only enabled deployment shape in the starter.
+# ---------------------------------------------------------------------------
+singleBinary:
+  replicas: 1
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: longhorn
+    accessModes:
+      - ReadWriteOnce
+    # Backup-exempt — logs are ephemeral. Same design call as the
+    # Prometheus and Alertmanager PVCs in the kube-prometheus-stack.
+    annotations:
+      backup-exempt-reason: "Loki log chunks are ephemeral; not worth backup pipeline overhead"
+    # NOTE on PVC labels: this chart version exposes `persistence.annotations`
+    # but not `persistence.labels` for the PVC, so the `backup-exempt`
+    # LABEL (the one the pvc-plumber webhook reads) cannot be set here
+    # without overriding the StatefulSet template directly. The
+    # workaround that matters: the singleBinary StatefulSet's PVC
+    # template generates PVCs in the `loki-stack` namespace, which is
+    # NOT in pvc-plumber's SYSTEM_NAMESPACES list. As a result, the
+    # webhook would normally treat these as user PVCs and require a
+    # backup intent declaration. THE OPERATOR ANNOTATION-ONLY EXEMPTION
+    # IS NOT WIRED UP IN PVC-PLUMBER 2.0.0-rc1 — only the LABEL
+    # `backup-exempt: "true"` is read. Until that's fixed, expect
+    # admission warnings on the loki-* PVCs and either (a) tolerate
+    # them, or (b) add `loki-stack` to pvc-plumber's SYSTEM_NAMESPACES.
+    # Tracking as a follow-up for the architect / pvc-plumber team.
+
+# ---------------------------------------------------------------------------
+# Disable SimpleScalable / Distributed components — SingleBinary mode
+# uses the singleBinary StatefulSet only.
+# ---------------------------------------------------------------------------
+backend:
+  replicas: 0
+read:
+  replicas: 0
+write:
+  replicas: 0
+ingester:
+  replicas: 0
+distributor:
+  replicas: 0
+querier:
+  replicas: 0
+queryFrontend:
+  replicas: 0
+queryScheduler:
+  replicas: 0
+indexGateway:
+  replicas: 0
+compactor:
+  replicas: 0
+bloomGateway:
+  replicas: 0
+bloomPlanner:
+  replicas: 0
+bloomBuilder:
+  replicas: 0
+
+# In SingleBinary mode the Loki canary deployment is more noise than
+# signal — disable it. (The canary writes synthetic logs every minute
+# to verify ingestion; useful in a multi-node Loki, overkill in a
+# single-pod starter.)
+lokiCanary:
+  enabled: false
+
+# In-cluster object-storage subchart (minio). The starter relies on
+# filesystem storage for Loki, so minio is unnecessary; explicit
+# disable so the user doesn't get a surprise minio Deployment in
+# loki-stack on first sync.
+minio:
+  enabled: false
+
+# Test pods — disable. The chart ships an upstream Helm test job that
+# verifies canary writes; it adds an extra pod and depends on the
+# lokiCanary subchart, which is also off in the starter (see below).
+# Without disabling here, the chart fails its own validate.yaml NOTES
+# check at render time when lokiCanary is off.
+test:
+  enabled: false
+
+# ---------------------------------------------------------------------------
+# Gateway — the user-facing Loki HTTP API endpoint. ClusterIP service is
+# enough; the HTTPRoute (in infrastructure/networking/gateway/
+# httproute-loki.yaml) exposes it on the Gateway. The source homelab
+# uses a LoadBalancer service here, but in the starter the Gateway is
+# the LoadBalancer and Loki is internal — ClusterIP is correct.
+# ---------------------------------------------------------------------------
+gateway:
+  enabled: true
+  replicas: 1
+  service:
+    type: ClusterIP
+
+# ---------------------------------------------------------------------------
+# Memcached / chunksCache / resultsCache — disable for the starter.
+# In SingleBinary mode these add ~3 extra pods that aren't needed for
+# the volume of logs a starter cluster produces. Re-enable on scale-up.
+# ---------------------------------------------------------------------------
+chunksCache:
+  enabled: false
+resultsCache:
+  enabled: false

@@ -1,0 +1,134 @@
+# ServiceMonitors for components the starter ships.
+#
+# IMPORTANT: every ServiceMonitor here carries `release: kube-prometheus-stack`
+# in `metadata.labels`. The Prometheus instance the chart spins up
+# selects ServiceMonitors via `serviceMonitorSelector.matchLabels.release =
+# kube-prometheus-stack` (the chart-default value). Without that label
+# the monitor is silently ignored and the metrics are not scraped.
+# This is the most common "but it's there in the cluster, why no
+# metrics" footgun with kube-prometheus-stack.
+#
+# Stripped from source homelab cluster:
+#   - home-assistant (Tapo power monitoring) — homelab-specific app
+#   - nvidia-device-plugin and dcgm-exporter — no GPU in starter
+#
+# What the architect's ArgoCD values.yaml is expected to add (heads-up
+# from the conductor 2026-05-07): per-component metrics ServiceMonitors
+# (controller / server / repoServer / applicationSet / notifications)
+# directly via the argo-cd Helm chart's metrics.serviceMonitor.* keys,
+# each carrying `additionalLabels.release: kube-prometheus-stack`.
+# Those don't live in this file — the chart wires them up — but they
+# share the selector contract.
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: longhorn-metrics
+  namespace: kube-prometheus-stack
+  labels:
+    app.kubernetes.io/name: longhorn
+    release: kube-prometheus-stack
+    prometheus: kube-prometheus-stack-prometheus
+spec:
+  # NOTE: select on `app: longhorn-manager` (NOT
+  # `app.kubernetes.io/name: longhorn-manager`). Longhorn's chart still
+  # uses the legacy un-namespaced `app` label on its manager DaemonSet
+  # Service. Selecting on the kubernetes.io variant matches nothing.
+  # (Source-cluster CLAUDE.md flags this; preserved here.)
+  selector:
+    matchLabels:
+      app: longhorn-manager
+  namespaceSelector:
+    matchNames:
+      - longhorn-system
+  endpoints:
+    - port: manager
+      interval: 30s
+      path: /metrics
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: pvc-plumber-metrics
+  namespace: kube-prometheus-stack
+  labels:
+    app.kubernetes.io/name: pvc-plumber
+    release: kube-prometheus-stack
+    prometheus: kube-prometheus-stack-prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pvc-plumber
+  namespaceSelector:
+    matchNames:
+      - volsync-system
+  endpoints:
+    - port: http
+      interval: 30s
+      path: /metrics
+      scrapeTimeout: 10s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: cilium-metrics
+  namespace: kube-prometheus-stack
+  labels:
+    app.kubernetes.io/name: cilium
+    release: kube-prometheus-stack
+    prometheus: kube-prometheus-stack-prometheus
+spec:
+  selector:
+    matchLabels:
+      k8s-app: cilium
+  namespaceSelector:
+    matchNames:
+      - kube-system
+  endpoints:
+    - port: prometheus
+      interval: 30s
+      path: /metrics
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: cilium-operator-metrics
+  namespace: kube-prometheus-stack
+  labels:
+    app.kubernetes.io/name: cilium-operator
+    release: kube-prometheus-stack
+    prometheus: kube-prometheus-stack-prometheus
+spec:
+  selector:
+    matchLabels:
+      name: cilium-operator
+  namespaceSelector:
+    matchNames:
+      - kube-system
+  endpoints:
+    - port: prometheus
+      interval: 30s
+      path: /metrics
+---
+# Gateway API service exposes per-Gateway listener metrics via Cilium's
+# envoy proxy. Useful for tracking HTTPRoute traffic per backend service.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: gateway-api-metrics
+  namespace: kube-prometheus-stack
+  labels:
+    app.kubernetes.io/name: gateway-api
+    release: kube-prometheus-stack
+    prometheus: kube-prometheus-stack-prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gateway
+  namespaceSelector:
+    matchNames:
+      - gateway
+  endpoints:
+    - port: metrics
+      interval: 30s
+      path: /metrics

@@ -1,0 +1,46 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: kube-prometheus-stack
+
+# Per repo CLAUDE.md: every YAML in this directory MUST be listed here
+# under `resources:` — Kustomize does NOT auto-discover files. Adding a
+# new alert / dashboard / ServiceMonitor without updating this list ships
+# nothing.
+resources:
+  - ns.yaml
+  - sealed-grafana-admin.yaml
+  - custom-alerts.yaml
+  - custom-servicemonitors.yaml
+  - longhorn-backup-alerts.yaml
+  # Backstop audit for Longhorn PVCs whose backup intent was never
+  # declared. See file header for design rationale.
+  - longhorn-pvc-backup-audit.yaml
+  - volsync-alerts.yaml
+
+# Strategic-merge patch overrides the chart-rendered alertmanager
+# Secret so we control routing / inhibition / receivers from git rather
+# than via the chart's values.yaml schema.
+patchesStrategicMerge:
+  - alertmanager-config.yaml
+
+# Helm chart fetch + render. ArgoCD's argocd-cm has
+# `kustomize.buildOptions: --enable-helm` set in the architect's 2b
+# values.yaml, so this `helmCharts:` block is honored at sync time
+# (default kustomize without that flag would error on this stanza).
+#
+# Pinned to 84.1.0 — matches the source homelab's most recent vendored
+# chart copy. Per repo CLAUDE.md, this chart is on the "do not auto-bump"
+# list (kube-prometheus-stack majors carry breaking schema changes; pin
+# explicitly and bump deliberately).
+helmCharts:
+  - name: kube-prometheus-stack
+    repo: https://prometheus-community.github.io/helm-charts
+    version: 84.1.0
+    # Release name MUST be `kube-prometheus-stack`. ServiceMonitors and
+    # PrometheusRules across the cluster select on
+    # `release: kube-prometheus-stack` to be picked up by this Prometheus
+    # instance. Renaming the release silently orphans every monitor.
+    releaseName: kube-prometheus-stack
+    namespace: kube-prometheus-stack
+    valuesFile: values.yaml
+    includeCRDs: true

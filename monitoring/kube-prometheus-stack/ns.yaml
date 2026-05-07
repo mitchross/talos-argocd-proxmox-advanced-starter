@@ -1,0 +1,20 @@
+# Namespace for the kube-prometheus-stack Helm release.
+#
+# The directory name is `kube-prometheus-stack` because the monitoring
+# ApplicationSet uses `path.basename` as the destination namespace, and
+# the Helm chart's release name MUST also be `kube-prometheus-stack` for
+# upstream defaults (Prometheus operator selectors, ServiceMonitor label
+# selector via `release: kube-prometheus-stack`, Helm-rendered RBAC names,
+# etc.) to line up. Don't rename the directory or the release.
+#
+# Privileged enforcement is intentionally NOT set here — the source
+# homelab's namespace label was for dcgm-exporter (NVIDIA GPU metrics),
+# which the starter does not ship. node-exporter via the chart's default
+# DaemonSet runs with hostPID/hostNetwork but not in this namespace; it
+# lives in `kube-system` and the chart sets its own PodSecurity context.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kube-prometheus-stack
+  labels:
+    name: kube-prometheus-stack

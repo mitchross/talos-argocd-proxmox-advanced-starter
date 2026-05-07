@@ -17,6 +17,15 @@ resources:
   - gw-internal.yaml
   - httproute-argocd.yaml
   - httproute-longhorn.yaml
+  # Monitoring HTTPRoutes live here (not in monitoring/) for the same
+  # reason as httproute-argocd.yaml: the HTTPRoute references the
+  # Wave-4 Gateway, and putting it in the Wave-5 monitoring directory
+  # means a stuck Progressing state until W4 catches up. Same wave as
+  # the Gateway = clean.
+  - httproute-grafana.yaml
+  - httproute-prometheus.yaml
+  - httproute-alertmanager.yaml
+  - httproute-loki.yaml
 
 generatorOptions:
   disableNameSuffixHash: true
