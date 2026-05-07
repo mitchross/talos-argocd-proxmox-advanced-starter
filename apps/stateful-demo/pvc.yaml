@@ -1,0 +1,44 @@
+---
+# The whole point of this demo lives in the labels here.
+#
+# `backup: hourly` — pvc-plumber's PVC reconciler watches this label.
+# When it sees a PVC carrying it, it ensures three companion resources
+# exist in the same namespace:
+#
+#   ExternalSecret/volsync-stateful-demo-data       — pulls KOPIA_PASSWORD
+#                                                     from the `1password`
+#                                                     ClusterSecretStore via
+#                                                     ESO
+#   ReplicationSource/stateful-demo-data-backup     — VolSync backup schedule,
+#                                                     deterministic minute via
+#                                                     sha256(ns/pvc) % 60
+#   ReplicationDestination/stateful-demo-data-backup — restore handle
+#
+# Verify after ArgoCD syncs by running:
+#
+#   kubectl get externalsecret,replicationsource,replicationdestination \
+#     -n stateful-demo -l volsync.backup/pvc=stateful-demo-data
+#
+# All three should appear within a few seconds of the PVC binding.
+# See README.md in this directory for the full walkthrough.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: stateful-demo-data
+  namespace: stateful-demo
+  labels:
+    app.kubernetes.io/name: stateful-demo
+    # MAGIC LABEL — pvc-plumber operator watches PVCs with this label.
+    # Allowed values: `hourly` (24-snap retain) or `daily` (7-snap retain).
+    backup: hourly
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  # `longhorn` storageClass is required — VolSync's Snapshot copyMethod
+  # uses Longhorn's VolumeSnapshotClass. NFS PVs / hostPath PVs / other
+  # CSI drivers without a matching VolumeSnapshotClass would skip the
+  # snapshot step and fall back to direct copy (slower, less safe).
+  storageClassName: longhorn

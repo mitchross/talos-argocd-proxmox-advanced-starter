@@ -47,6 +47,15 @@ apps/postgres-demo/
 
 ## Before first reconcile: seal the MinIO credentials
 
+> **Note**: this is one of TWO seal-secret steps the starter requires
+> before ArgoCD's first sync. The other is the Kopia repository
+> password at `infrastructure/controllers/pvc-plumber/sealed-kopia-
+> password.yaml` — without that, pvc-plumber's `externalsecret.yaml`
+> can't unwrap the master secret and per-PVC backups in
+> `apps/stateful-demo/` (and any user app with a `backup: hourly`
+> label) silently no-op. `scripts/seal-secret.sh` handles both — see
+> `docs/getting-started.md` for the recommended ordering.
+
 The `minio/sealed-credentials.yaml` file ships as a stub regular Secret.
 Before ArgoCD can fully sync postgres-demo, you must replace it with a
 real `SealedSecret`:

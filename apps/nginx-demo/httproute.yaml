@@ -1,0 +1,45 @@
+---
+# HTTPRoute attaching to gateway-internal at the `https` listener.
+#
+# Three pieces are non-obvious and required:
+#   1. parentRefs[].sectionName: https — without this, the route
+#      attaches to the implicit default listener (HTTP-only port 80)
+#      and HTTPS hits return 404. THE source cluster's docs flag this
+#      as silent-fail #1.
+#   2. parentRefs[].namespace: gateway — Gateway is in the `gateway`
+#      namespace, the HTTPRoute is in `nginx-demo`. Cross-namespace
+#      attachment is allowed because the Gateway's
+#      `allowedRoutes.namespaces.from: All` permits it.
+#   3. backendRefs[].port: 80 — the SERVICE port, not the container
+#      port. Cilium resolves this against the named `http` port on the
+#      Service.
+#
+# After ArgoCD syncs this, navigate to https://nginx.<your-domain> on
+# any LAN-attached device whose DNS resolves the wildcard to your
+# gateway IP. First visit will show a self-signed cert warning —
+# that's expected (selfsigned-cluster-issuer is the starter default).
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: nginx-demo
+  namespace: nginx-demo
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: gateway-internal
+      namespace: gateway
+      sectionName: https
+  hostnames:
+    - "nginx.__REPLACE_ME_DOMAIN__"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: nginx-demo
+          port: 80
+          weight: 1
