@@ -51,16 +51,15 @@ talos-argocd-proxmox-advanced-starter/
 │   │   │   ├── ns.yaml
 │   │   │   ├── kustomization.yaml               # helm with version pin (argo-cd 9.5.x)
 │   │   │   ├── values.yaml                      # global ignoreDifferences for HTTPRoute/ExternalSecret/PVC
-│   │   │   ├── http-route.yaml                  # argocd.__REPLACE_ME_DOMAIN__
 │   │   │   ├── root.yaml                        # the manual-applied seed
 │   │   │   └── apps/                            # everything below this is GitOps-managed
 │   │   │       ├── kustomization.yaml
-│   │   │       ├── projects.yaml                # AppProjects: infrastructure / monitoring / my-apps
+│   │   │       ├── projects.yaml                # AppProjects: infrastructure / monitoring / apps
 │   │   │       ├── bootstrap/                   # Wave 0 — manually placed entrypoints
 │   │   │       │   ├── argocd.yaml              # self-managed argocd Application
 │   │   │       │   ├── cilium-app.yaml
-│   │   │       │   ├── sealed-secrets-app.yaml  # NEW: replaces 1passwordconnect-app.yaml
-│   │   │       │   └── cert-manager-app.yaml    # MOVED UP from W4 — needed by W1 plumber webhook TLS
+│   │   │       │   ├── sealed-secrets-app.yaml  # source-of-truth secret backend
+│   │   │       │   └── external-secrets-app.yaml # ESO + ClusterSecretStore (kubernetes provider)
 │   │   │       ├── core-dependencies/           # Wave 1+2 — storage and backup gating
 │   │   │       │   ├── longhorn-app.yaml
 │   │   │       │   ├── snapshot-controller-app.yaml
@@ -73,7 +72,13 @@ talos-argocd-proxmox-advanced-starter/
 │   │   │           └── apps-appset.yaml
 │   │   ├── cert-manager/                        # cluster-issuer (self-signed for default starter)
 │   │   ├── sealed-secrets/                      # default secret backend
+│   │   ├── external-secrets/                    # ESO controller + `1password` ClusterSecretStore
+│   │   │                                        #   (kubernetes provider, NOT actually 1Password —
+│   │   │                                        #    operator hardcodes the name. See cluster-secret-
+│   │   │                                        #    store.yaml.)
 │   │   └── pvc-plumber/                         # the v2 operator (Deployment + 3 webhooks + RBAC)
+│   │                                            #   plus a hand-written ExternalSecret for the
+│   │                                            #   operator pod's own kopia password
 │   ├── networking/
 │   │   ├── cilium/                              # Helm values — gatewayAPI enabled, Hubble enabled
 │   │   └── gateway/                             # internal Gateway only by default; external listed as recipe
@@ -144,8 +149,8 @@ talos-argocd-proxmox-advanced-starter/
 | **infrastructure/controllers/argocd/apps/appsets/apps-appset.yaml** | source | **ADAPT** | Renamed from `my-apps-appset.yaml` to `apps-appset.yaml`; glob `apps/*` (not `apps/*/*` — the demo apps live one level deep, no category nesting). Drop the imagePullPolicy ignoreDifferences (was a Kyverno-mutation residue). |
 | **infrastructure/controllers/cert-manager/** | source | **ADAPT** | Default ClusterIssuer is **self-signed** (not Let's Encrypt-Cloudflare). Document Cloudflare DNS-01 swap as recipe. |
 | **infrastructure/controllers/sealed-secrets/** | NEW (no source) | **NEW** | Hand-written: bitnami sealed-secrets Helm chart pinned + the cluster controller. Tiny — one Helm app. |
-| **infrastructure/controllers/external-secrets/** | source | **SKIP** | Out of default starter (per conductor, 2026-05-07). Documented as an extension recipe — see `docs/extending/swapping-secret-backend.md` (Phase-1 ships only a one-paragraph stub; the full recipe is fleshed-out post-launch). |
-| **infrastructure/controllers/1passwordconnect/** | source | **SKIP** | Same as above — paid service, out of defaults. The ESO recipe will reference it as one of several backend options. |
+| **infrastructure/controllers/external-secrets/** | source `infrastructure/controllers/external-secrets/` (chart + ESO mechanics) + the operator's hardcoded `secretStoreRef.name="1password"` constraint | **NEW (revised in 2c-fix per conductor 2026-05-07)** | Originally SKIP per the sealed-secrets-only architecture. **Reverted** because pvc-plumber rc1's PVC reconciler hardcodes `ExternalSecret` creation — without ESO running, per-PVC mover Jobs can't mount a kopia password and backups silently no-op. Architecture: ESO controller + `ClusterSecretStore` named `1password` (yes — operator hardcodes this name; can't change without operator code work) using the **`kubernetes` provider** pointed at `Secret/rustfs` in volsync-system (also operator-hardcoded — `remoteRef.key=rustfs`, `remoteRef.property=kopia_password`). Mirrors source's chart pin (2.4.1) + the CRD `ServerSideApply` patches. Wave 0. |
+| **infrastructure/controllers/1passwordconnect/** | source | **SKIP** | Paid service, out of defaults. The ESO `1password` ClusterSecretStore in this starter is named after the contract (operator hardcodes `secretStoreRef.name=1password`) but uses the `kubernetes` provider, NOT the `onepassword` provider — so 1Password Connect is genuinely not running. The swap-backend recipe in `docs/extending/swapping-secret-backend.md` walks through replacing `kubernetes` with `onepassword` (or `vault`, `awssm`, `gcpsm`, etc.) — only the provider stanza changes, not the architecture. |
 | **infrastructure/controllers/pvc-plumber/** | source | **ADAPT** | Port verbatim except: (1) replace `externalsecret.yaml` with a SealedSecret containing the Kopia password, (2) substitute `__REPLACE_ME_NFS_SERVER__` and `__REPLACE_ME_NFS_PATH__` in deployment.yaml, (3) keep the asymmetric-failurePolicy webhook config exactly as-is including the 9-namespace exclusion list (and adjust comment to reference "data-loss prevention" generically rather than the 2026-04-08 incident). Reference the operator image: `ghcr.io/mitchross/pvc-plumber:2.0.0-rc1` per kickoff. |
 | **infrastructure/networking/cilium/** | source | **ADAPT** | Strip `cluster.name=talos-prod-cluster` → `__REPLACE_ME_CLUSTER_NAME__`. Strip `ipv4NativeRoutingCIDR: 10.14.0.0/16` → keep but make it a placeholder if the user customizes. Strip `bandwidthManager.bbr` and `enableIPv4BIGTCP` — too kernel-specific for a starter default; document as performance-tuning recipe. |
 | **infrastructure/networking/gateway/** | source | **ADAPT** | Ship internal Gateway only. Hostname `*.__REPLACE_ME_DOMAIN__`. Address `__REPLACE_ME_GATEWAY_IP__`. Drop external Gateway + external-DNS labels (recipe). Drop the postgres TCP listener (recipe — only postgres-demo would use it, and it adds complexity). |
@@ -172,7 +177,7 @@ talos-argocd-proxmox-advanced-starter/
 | **docs/adapting-to-your-cluster.md** | NEW | **NEW** | Placeholder reference table — every `__REPLACE_ME_*` and what to put. |
 | **docs/extending/adding-gpu-support.md** | source `infrastructure/controllers/nvidia-gpu-operator/` + Talos extension config | **ADAPT** | Recipe form; not deployed by default. |
 | **docs/extending/adding-cloudflare.md** | source `infrastructure/networking/cloudflared/` + `cloudflare-cluster-issuer` from cert-manager | **ADAPT** | Three-step recipe: cert-manager DNS-01, external-DNS Cloudflare provider, cloudflared tunnel. |
-| **docs/extending/swapping-secret-backend.md** | source `infrastructure/controllers/1passwordconnect/` + ESO ClusterSecretStore | **STUB (Phase 1) → ADAPT (Phase 3)** | Phase 1 ships a one-paragraph stub: "to swap sealed-secrets for ESO with provider X (Vault / 1Password / AWS Secrets Manager / GCP Secret Manager), see [PR #N for the worked recipe]." The full recipe walkthrough lands in Phase 3 / post-launch. Per conductor, 2026-05-07. |
+| **docs/extending/swapping-secret-backend.md** | source `infrastructure/controllers/1passwordconnect/` + ESO ClusterSecretStore | **STUB (Phase 1) → ADAPT (Phase 3)** | Phase 1 ships a one-paragraph stub. **Recipe scope reduced after 2c-fix**: ESO is now in the default starter, so swapping backends (sealed-secrets-as-source → 1Password / Vault / AWS-SM / GCP-SM / Azure-KV / Akeyless) is just **changing the provider stanza in `infrastructure/controllers/external-secrets/cluster-secret-store.yaml`** (5–10 lines), NOT "rip out sealed-secrets and add ESO." Much smaller recipe than originally scoped. The user's source-of-truth secret moves from a SealedSecret in git to whatever their backend stores; the per-PVC operator-templated ExternalSecrets keep working unchanged because they only reference the `1password` ClusterSecretStore name. |
 | **docs/extending/adding-an-app.md** | NEW (cookbook) | **NEW** | Add directory + kustomization.yaml + label PVC = deployed. |
 | **docs/extending/disaster-recovery.md** | source `docs/cnpg-disaster-recovery.md` + the deadlock-recovery section of `pvc-plumber-walkthrough.md` | **ADAPT** | Walkthrough: cluster lost, restore from Kopia + restore from Barman. |
 | **docs/extending/external-s3-backend.md** | NEW | **NEW (Phase 3)** | Recipe — swap the in-cluster MinIO that postgres-demo's CNPG Cluster uses for AWS S3 / Cloudflare R2 / Backblaze B2 / external MinIO. Single sealed-secret swap + ObjectStore endpoint URL change. Per conductor revision 2026-05-07. |
@@ -250,7 +255,8 @@ The starter compresses to 6 waves (W0–W6). Cert-manager CRDs install at W0 (vi
 | **0** | AppProjects (`projects.yaml`) | Foundational ArgoCD config |
 | **0** | `bootstrap/argocd.yaml` (self-managed argo-cd Helm app) | The chicken-and-egg: argo-cd manages itself from W0 |
 | **0** | `bootstrap/cilium-app.yaml` | CNI + Gateway API gatewayClass |
-| **0** | `bootstrap/sealed-secrets-app.yaml` | Default secret backend |
+| **0** | `bootstrap/sealed-secrets-app.yaml` | Source-of-truth secret backend (committed SealedSecrets unwrap into regular Secrets) |
+| **0** | `bootstrap/external-secrets-app.yaml` | ESO controller + `1password` ClusterSecretStore (kubernetes provider). Bridge from the master kopia Secret in volsync-system to per-app-namespace Secrets templated from operator-created ExternalSecrets. |
 | **1** | `core-dependencies/longhorn-app.yaml` | Storage |
 | **1** | `core-dependencies/snapshot-controller-app.yaml` | Required for Longhorn `VolumeSnapshotClass` |
 | **1** | `core-dependencies/volsync-app.yaml` | Backup engine |

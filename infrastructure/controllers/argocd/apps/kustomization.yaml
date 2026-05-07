@@ -8,6 +8,7 @@ resources:
   - bootstrap/argocd.yaml
   - bootstrap/cilium-app.yaml
   - bootstrap/sealed-secrets-app.yaml
+  - bootstrap/external-secrets-app.yaml
 
   # ==========================================================================
   # Wave 1 — core storage + backup infra (standalone, NOT via AppSet, so

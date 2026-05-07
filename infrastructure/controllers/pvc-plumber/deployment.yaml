@@ -109,13 +109,21 @@ spec:
         # webhooks.yaml). Keep them in sync — divergence between admission
         # and reconciler views of "what is infrastructure" is a footgun.
         #
-        # Starter list (7 namespaces): infrastructure surfaces in this
+        # Starter list (8 namespaces) — infrastructure surfaces in this
         # repo where backup-labeled PVCs would deadlock if pvc-plumber's
-        # webhook fails closed. Differs from the source cluster (which
-        # has 9, including kyverno and external-secrets/1passwordconnect)
-        # because the starter doesn't ship those components.
+        # webhook fails closed:
+        #   kube-system / volsync-system / argocd / longhorn-system /
+        #   snapshot-controller / cert-manager / sealed-secrets /
+        #   external-secrets
+        # Differs from the source cluster (which has 9, including
+        # `kyverno` as a defensive forward-compat marker and
+        # `1passwordconnect` for the source's paid-service backend).
+        # The starter drops kyverno (never been here, marker would
+        # mislead readers) and 1passwordconnect (no paid services in
+        # default), and adds sealed-secrets (the starter's secret
+        # backend that didn't exist in source).
         - name: SYSTEM_NAMESPACES
-          value: "kube-system,volsync-system,argocd,longhorn-system,snapshot-controller,cert-manager,sealed-secrets"
+          value: "kube-system,volsync-system,argocd,longhorn-system,snapshot-controller,cert-manager,sealed-secrets,external-secrets"
         securityContext:
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: false

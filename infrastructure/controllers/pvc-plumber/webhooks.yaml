@@ -68,6 +68,7 @@ webhooks:
             - snapshot-controller
             - cert-manager
             - sealed-secrets
+            - external-secrets
     failurePolicy: Fail
     sideEffects: None
     timeoutSeconds: 10
@@ -100,6 +101,7 @@ webhooks:
             - snapshot-controller
             - cert-manager
             - sealed-secrets
+            - external-secrets
     # Ignore: NFS inject failure means a single backup mover Job runs
     # without its repository volume and fails — backup retries, cluster
     # keeps moving. Not worth deadlocking admission for this.
@@ -149,6 +151,7 @@ webhooks:
             - snapshot-controller
             - cert-manager
             - sealed-secrets
+            - external-secrets
     failurePolicy: Fail
     sideEffects: None
     timeoutSeconds: 10
@@ -216,6 +219,7 @@ webhooks:
             - snapshot-controller
             - cert-manager
             - sealed-secrets
+            - external-secrets
     # Audit contract, not data-safety contract — preserves blast radius
     # (only backup-labeled PVCs blocked on operator outage). See comment
     # block above for the full asymmetry rationale.

@@ -12,9 +12,9 @@ metadata:
 # pvc-plumber v2 (operator mode) needs to:
 #   - watch PVCs and reconcile companion ES/RS/RD resources
 #   - manage volsync ReplicationSource/ReplicationDestination lifecycle
-#   - manage Secrets (Kopia password — replaces the source cluster's
-#     ExternalSecret-managed flow, since the starter unwraps a SealedSecret
-#     into a plain Secret rather than templating it from 1Password)
+#   - manage ExternalSecrets that supply the kopia repo password to mover
+#     Jobs (operator hardcodes this — image 2.0.0-rc1 doesn't ship a
+#     "create plain Secret" mode)
 #   - run controller-runtime leader election (leases)
 #   - emit Kubernetes Events for observability
 #
@@ -35,11 +35,8 @@ rules:
   - apiGroups: [""]
     resources: ["persistentvolumeclaims"]
     verbs: ["get", "list", "watch"]
-  # The starter manages companion Secrets directly (not via ESO).
-  # The operator creates a per-PVC Secret named volsync-<pvcname>
-  # with the Kopia password copied from pvc-plumber-kopia.
-  - apiGroups: [""]
-    resources: ["secrets"]
+  - apiGroups: ["external-secrets.io"]
+    resources: ["externalsecrets"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: ["volsync.backube"]
     resources: ["replicationsources", "replicationdestinations"]

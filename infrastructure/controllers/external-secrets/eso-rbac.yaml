@@ -1,0 +1,47 @@
+---
+# RBAC for ESO's `kubernetes` provider to read the master kopia secret.
+#
+# The ClusterSecretStore in cluster-secret-store.yaml authenticates as the
+# `external-secrets` ServiceAccount (created by the chart in the
+# external-secrets namespace). For the kubernetes provider to actually
+# read `Secret/rustfs` in volsync-system, that SA needs `get,list,watch`
+# on secrets in that namespace.
+#
+# Scoped to volsync-system on purpose — ESO has no business reading
+# secrets cluster-wide. If you later add another ClusterSecretStore that
+# bridges from a different source namespace, add a parallel Role/Binding
+# rather than promoting this to a ClusterRole.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: eso-kopia-master-reader
+  namespace: volsync-system
+  labels:
+    app.kubernetes.io/name: external-secrets
+    app.kubernetes.io/component: kubernetes-provider-rbac
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["rustfs"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: eso-kopia-master-reader
+  namespace: volsync-system
+  labels:
+    app.kubernetes.io/name: external-secrets
+    app.kubernetes.io/component: kubernetes-provider-rbac
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: eso-kopia-master-reader
+subjects:
+  - kind: ServiceAccount
+    name: external-secrets
+    namespace: external-secrets

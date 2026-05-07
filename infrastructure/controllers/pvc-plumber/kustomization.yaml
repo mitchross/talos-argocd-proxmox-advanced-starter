@@ -19,6 +19,7 @@ kind: Kustomization
 #             closed before the pod is ready, deadlocking the cluster)
 resources:
   - sealed-kopia-password.yaml
+  - externalsecret.yaml
   - rbac.yaml
   - certificate.yaml
   - deployment.yaml
