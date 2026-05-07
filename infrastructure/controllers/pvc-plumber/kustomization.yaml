@@ -1,0 +1,25 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Resource ordering matters here — kustomize applies in declaration order
+# but ArgoCD's sync-wave annotations (set on the resources themselves)
+# control the actual deployment sequence:
+#
+#   wave 0  → SealedSecret (unwrapped by sealed-secrets controller into
+#             a regular Secret named pvc-plumber-kopia)
+#   wave 0  → ServiceAccount + ClusterRole + ClusterRoleBinding
+#   wave 0  → Issuer + Certificate (cert-manager namespace-scoped self-
+#             signed; provides webhook-serving TLS)
+#   wave 1  → Deployment + Service + PodDisruptionBudget (operator pod
+#             starts here; controller-runtime + 3 webhooks + the legacy
+#             /exists HTTP server all in one binary)
+#   wave 2  → MutatingWebhookConfiguration + ValidatingWebhookConfiguration
+#             (registered AFTER the operator pod is healthy — registering
+#             at wave 1 alongside the Deployment causes admission to fail
+#             closed before the pod is ready, deadlocking the cluster)
+resources:
+  - sealed-kopia-password.yaml
+  - rbac.yaml
+  - certificate.yaml
+  - deployment.yaml
+  - webhooks.yaml

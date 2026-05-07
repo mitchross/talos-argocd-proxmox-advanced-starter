@@ -1,0 +1,70 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pvc-plumber
+  namespace: volsync-system
+  labels:
+    app.kubernetes.io/name: pvc-plumber
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+---
+# pvc-plumber v2 (operator mode) needs to:
+#   - watch PVCs and reconcile companion ES/RS/RD resources
+#   - manage volsync ReplicationSource/ReplicationDestination lifecycle
+#   - manage Secrets (Kopia password — replaces the source cluster's
+#     ExternalSecret-managed flow, since the starter unwraps a SealedSecret
+#     into a plain Secret rather than templating it from 1Password)
+#   - run controller-runtime leader election (leases)
+#   - emit Kubernetes Events for observability
+#
+# IMPORTANT: this RBAC is hand-written, NOT generated from kubebuilder
+# markers. Leases + events permissions live here that the operator's
+# kubebuilder markers were missing in v2.0.0. Do not regenerate from
+# `controller-gen` — it will silently drop those grants and the manager
+# will fail to start with a permissions error.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: pvc-plumber
+  labels:
+    app.kubernetes.io/name: pvc-plumber
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+rules:
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch"]
+  # The starter manages companion Secrets directly (not via ESO).
+  # The operator creates a per-PVC Secret named volsync-<pvcname>
+  # with the Kopia password copied from pvc-plumber-kopia.
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["volsync.backube"]
+    resources: ["replicationsources", "replicationdestinations"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Leader election (controller-runtime needs this).
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: pvc-plumber
+  labels:
+    app.kubernetes.io/name: pvc-plumber
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: pvc-plumber
+subjects:
+  - kind: ServiceAccount
+    name: pvc-plumber
+    namespace: volsync-system

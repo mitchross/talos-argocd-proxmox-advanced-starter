@@ -1,0 +1,46 @@
+---
+# Self-signed Issuer for the pvc-plumber webhook serving cert.
+# Namespace-scoped, NOT a ClusterIssuer — the only consumer is the
+# webhook server in volsync-system, and namespace scoping makes the
+# trust boundary explicit.
+#
+# Why selfSigned and not a real CA? The webhook server is internal —
+# kube-apiserver consumes the cert via the cert-manager.io/inject-ca-from
+# annotation on the WebhookConfigurations, so the CA bundle is injected
+# directly. There's no external trust to bridge.
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: pvc-plumber-selfsigned-issuer
+  namespace: volsync-system
+  labels:
+    app.kubernetes.io/name: pvc-plumber
+    app.kubernetes.io/component: webhook
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  selfSigned: {}
+---
+# TLS cert for the webhook server. cert-manager rotates this automatically.
+# Consumed by:
+#   - the Deployment, mounted at /tmp/k8s-webhook-server/serving-certs
+#   - the Mutating/Validating WebhookConfigurations via
+#     `cert-manager.io/inject-ca-from: volsync-system/pvc-plumber-webhook-tls`
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: pvc-plumber-webhook-tls
+  namespace: volsync-system
+  labels:
+    app.kubernetes.io/name: pvc-plumber
+    app.kubernetes.io/component: webhook
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  secretName: pvc-plumber-webhook-tls
+  dnsNames:
+    - pvc-plumber.volsync-system.svc
+    - pvc-plumber.volsync-system.svc.cluster.local
+  issuerRef:
+    name: pvc-plumber-selfsigned-issuer
+    kind: Issuer
