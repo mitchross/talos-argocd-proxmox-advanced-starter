@@ -10,14 +10,21 @@
 #      its CRD via `spec.plugins[].name = barman-cloud.cloudnative-pg.io`.
 #      Wave 3 puts it ahead of the Wave-4 database AppSet (CNPG operator)
 #      and the Wave-6 apps AppSet (postgres-demo Cluster).
-#   3. The plugin manifest targets the cnpg-system namespace, not
-#      `cnpg-barman-plugin` (the directory basename) — using a
-#      standalone Application lets us specify destination.namespace
-#      explicitly.
+#   3. Using a standalone Application lets us specify destination.namespace
+#      explicitly to co-locate the plugin with the CNPG operator
+#      (see `destination.namespace` below).
 #
 # Per conductor revision 2026-05-07: postgres-demo ships with backup/
 # restore by default, so this plugin is core infrastructure for the
 # starter, not optional.
+#
+# DESTINATION NAMESPACE — must match the CNPG operator's namespace.
+# Plugin discovery is hard-scoped to the operator's own namespace
+# (see kustomization.yaml header in this Application's source path
+# for full rationale + upstream doc reference). Operator runs in
+# `cloudnative-pg` per
+# `infrastructure/database/cloudnative-pg/cloudnative-pg-operator/`,
+# so the plugin lands there too.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -35,7 +42,8 @@ spec:
     path: infrastructure/database/cnpg-barman-plugin
   destination:
     server: https://kubernetes.default.svc
-    namespace: cnpg-system
+    # Must equal the CNPG operator's namespace (plugin discovery requirement).
+    namespace: cloudnative-pg
   syncPolicy:
     automated:
       prune: true
