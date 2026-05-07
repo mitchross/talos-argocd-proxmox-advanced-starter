@@ -103,14 +103,53 @@ configs:
       hs.message = "Initializing"
       return hs
 
+# =============================================================================
+# Per-component metrics + ServiceMonitor blocks.
+# =============================================================================
+# `release: kube-prometheus-stack` is the label kube-prometheus-stack's
+# Prometheus selector matches against ServiceMonitors — without this label,
+# Prometheus won't scrape ArgoCD's components even though the ServiceMonitors
+# exist. The chart name in monitoring/kube-prometheus-stack/ MUST match this
+# string for the selector to fire.
+
+controller:
+  metrics:
+    enabled: true
+    applicationLabels:
+      enabled: true
+    serviceMonitor:
+      enabled: true
+      additionalLabels:
+        release: kube-prometheus-stack
+
 server:
   # Single replica is fine for a starter; bump to 2 for HA when you scale up.
   replicas: 1
   ingress:
     enabled: false
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      additionalLabels:
+        release: kube-prometheus-stack
+
+repoServer:
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      additionalLabels:
+        release: kube-prometheus-stack
 
 applicationSet:
   enabled: true
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      additionalLabels:
+        release: kube-prometheus-stack
 
 # HA disabled by default — runs Redis as a single pod. Flip to `true` once
 # you've added more control planes / workers and want true HA.
@@ -124,8 +163,19 @@ ha:
 dex:
   enabled: false
 
+# Notifications enabled with metrics so ArgoCD app-sync / app-health events
+# can be wired to Slack / email / webhooks. Default channels are off — see
+# the chart's `notifications.notifiers` block to configure.
 notifications:
-  enabled: false
+  enabled: true
+  secret:
+    create: true
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      additionalLabels:
+        release: kube-prometheus-stack
 
 hpa:
   enabled: false

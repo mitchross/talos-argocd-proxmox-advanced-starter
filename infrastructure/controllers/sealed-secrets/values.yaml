@@ -1,0 +1,49 @@
+# bitnami-labs/sealed-secrets Helm values — starter cluster.
+#
+# What this controller does:
+# - Watches `SealedSecret` custom resources in any namespace
+# - Decrypts each one's payload using a private key kept in-cluster
+#   (auto-generated on first install; survives controller restarts via
+#   the `sealed-secrets-key*` Secrets in the sealed-secrets namespace)
+# - Creates / updates the corresponding regular `Secret` in the same
+#   namespace as the SealedSecret
+#
+# What it gives up vs. ESO-style external backends:
+# - The encrypted payload is committed to git, but the key is in
+#   the cluster. If you nuke the cluster without backing up the key
+#   Secret, you lose access to all your sealed values.
+# - The seal happens on the user's laptop (kubeseal CLI fetches the
+#   public key from the controller). All seal operations require LAN
+#   access to the cluster.
+#
+# When you back up your cluster, ALSO back up the sealed-secrets-key*
+# Secrets — `kubectl get secret -n sealed-secrets -l
+# sealedsecrets.bitnami.com/sealed-secrets-key -o yaml > backup.yaml`.
+# The seal-secret.sh helper script in scripts/ doesn't do this for you.
+# Document under docs/secret-management.md in Phase 3.
+
+# Pin to a recent release. Bitnami sealed-secrets is stable; the chart
+# version doesn't track the controller version 1:1.
+fullnameOverride: sealed-secrets-controller
+
+# Modest resource bounds — controller is lightweight (one
+# Reconcile-on-watch per SealedSecret CR change).
+resources:
+  requests:
+    cpu: 25m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+# Replicas: 1. The controller is a leader-elected singleton; running
+# more replicas is wasteful for the starter scale.
+replicaCount: 1
+
+# Enable PrometheusRule + ServiceMonitor only when monitoring is up.
+# Same release-label selector as the rest of the stack.
+metrics:
+  serviceMonitor:
+    enabled: true
+    additionalLabels:
+      release: kube-prometheus-stack

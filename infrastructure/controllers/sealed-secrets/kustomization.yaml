@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: sealed-secrets
+
+resources:
+  - ns.yaml
+
+# Pin to a recent stable release. The chart vs. controller version
+# mapping is in the chart's README — chart 2.16.x ships controller v0.27.x
+# (current stable as of writing). Renovate manages bumps through 2j.
+helmCharts:
+  - name: sealed-secrets
+    repo: https://bitnami-labs.github.io/sealed-secrets
+    version: 2.16.2
+    releaseName: sealed-secrets
+    namespace: sealed-secrets
+    valuesFile: values.yaml
+    includeCRDs: true
