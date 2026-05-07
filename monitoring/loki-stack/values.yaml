@@ -71,24 +71,14 @@ singleBinary:
     storageClass: longhorn
     accessModes:
       - ReadWriteOnce
-    # Backup-exempt — logs are ephemeral. Same design call as the
-    # Prometheus and Alertmanager PVCs in the kube-prometheus-stack.
-    annotations:
-      backup-exempt-reason: "Loki log chunks are ephemeral; not worth backup pipeline overhead"
-    # NOTE on PVC labels: this chart version exposes `persistence.annotations`
-    # but not `persistence.labels` for the PVC, so the `backup-exempt`
-    # LABEL (the one the pvc-plumber webhook reads) cannot be set here
-    # without overriding the StatefulSet template directly. The
-    # workaround that matters: the singleBinary StatefulSet's PVC
-    # template generates PVCs in the `loki-stack` namespace, which is
-    # NOT in pvc-plumber's SYSTEM_NAMESPACES list. As a result, the
-    # webhook would normally treat these as user PVCs and require a
-    # backup intent declaration. THE OPERATOR ANNOTATION-ONLY EXEMPTION
-    # IS NOT WIRED UP IN PVC-PLUMBER 2.0.0-rc1 — only the LABEL
-    # `backup-exempt: "true"` is read. Until that's fixed, expect
-    # admission warnings on the loki-* PVCs and either (a) tolerate
-    # them, or (b) add `loki-stack` to pvc-plumber's SYSTEM_NAMESPACES.
-    # Tracking as a follow-up for the architect / pvc-plumber team.
+    # Backup-exempt label + annotation are injected via a kustomize
+    # PatchTransformer (see patches/loki-pvc-backup-exempt.yaml). The
+    # chart doesn't expose `persistence.labels`, so the LABEL — which
+    # is the half pvc-plumber's webhook reads — has to be patched in
+    # post-render. Don't add an `annotations:` block here without
+    # adjusting the patch's annotations `op: add` to merge instead of
+    # replace; the patch currently overwrites the annotations map
+    # wholesale to keep the contract surface small.
 
 # ---------------------------------------------------------------------------
 # Disable SimpleScalable / Distributed components — SingleBinary mode

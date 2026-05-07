@@ -11,6 +11,14 @@ namespace: loki-stack
 resources:
   - ns.yaml
 
+# Inline transformers — applied after Helm chart rendering. The Loki
+# chart doesn't expose a values key for the singleBinary PVC's labels,
+# so the backup-exempt LABEL (the half of the contract pvc-plumber's
+# webhook reads) is injected here as a JSON-Patch transformer. See
+# patches/loki-pvc-backup-exempt.yaml header for full rationale.
+transformers:
+  - patches/loki-pvc-backup-exempt.yaml
+
 # Helm chart fetch + render. Per the architect's 2b ArgoCD values.yaml,
 # argocd-cm has `kustomize.buildOptions: --enable-helm` so this is
 # honored at sync time.
