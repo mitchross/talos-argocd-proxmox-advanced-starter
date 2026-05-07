@@ -1,0 +1,146 @@
+# Cilium Helm values — starter cluster.
+#
+# Trimmed from the source homelab:
+# - DROPPED: bandwidthManager.bbr (kernel-version-specific), enableIPv4BIGTCP
+#   (requires kernel >=5.19 + NIC support), bpf.preallocateMaps + ctTimeout
+#   tuning, production-grade agent resource limits (3 GiB memory ceiling).
+#   Document under docs/extending/ if you want them back for performance.
+# - KEPT: kubeProxyReplacement, gatewayAPI, l2announcements (with the Talos-
+#   specific `loadBalancer.acceleration: best-effort` workaround for the
+#   1.9+ XDP/TC ARP-drop kernel issue), Hubble + Hubble Relay + Hubble UI
+#   on (observability is core to the "advanced starter" framing).
+
+annotations:
+  argocd.argoproj.io/sync-wave: "0"
+
+# IMPORTANT: cluster.name must match the --set cluster.name used during the
+# initial `cilium install` at bootstrap (scripts/bootstrap-argocd.sh
+# carries that command). Mismatched names break Hubble certificate SANs
+# silently — pods won't fail, but hubble-relay can't connect to peers.
+cluster:
+  name: __REPLACE_ME_CLUSTER_NAME__
+  id: 1
+
+# Talos exposes the Kubernetes API on the local kubePrism endpoint — this
+# is configured by Sidero/Omni and is the canonical access path. Don't
+# point at an external LB; kubePrism handles HA via SideroLink.
+k8sServiceHost: localhost
+k8sServicePort: "7445"
+
+# Replace kube-proxy entirely. Cilium does L4 load-balancing in BPF; no
+# need for the iptables/ipvs proxy.
+kubeProxyReplacement: true
+
+# Talos-specific Linux capabilities required for the cilium-agent init
+# containers to set up cgroups and BPF maps in the read-only Talos
+# environment.
+securityContext:
+  capabilities:
+    ciliumAgent:
+      - CHOWN
+      - KILL
+      - NET_ADMIN
+      - NET_RAW
+      - IPC_LOCK
+      - SYS_ADMIN
+      - SYS_RESOURCE
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    cleanCiliumState:
+      - NET_ADMIN
+      - SYS_ADMIN
+      - SYS_RESOURCE
+
+# Talos cgroup v2 layout — Talos doesn't auto-mount cgroups, so Cilium
+# must read from the explicit hostRoot.
+cgroup:
+  autoMount:
+    enabled: false
+  hostRoot: /sys/fs/cgroup
+
+# Native routing: pod-to-pod traffic uses the underlying L3 network
+# directly (no overlay encapsulation). Lower latency than VXLAN.
+# autoDirectNodeRoutes: programs node routes for inter-node pod traffic.
+# ipv4NativeRoutingCIDR: the pod CIDR (matches Talos default 10.244.0.0/16).
+routingMode: native
+autoDirectNodeRoutes: true
+ipv4NativeRoutingCIDR: 10.244.0.0/16
+
+# Standard kubernetes IPAM — Cilium asks the controller-manager for pod
+# IPs out of the cluster's pod CIDR.
+ipam:
+  mode: kubernetes
+
+# Enables Cilium to intercept Service traffic at the socket level, which
+# is what makes kube-proxy replacement actually work for ClusterIP traffic
+# from inside pods.
+socketLB:
+  enabled: true
+  hostNamespaceOnly: false
+
+# BPF masquerading (no iptables MASQUERADE rules).
+bpf:
+  masquerade: true
+
+# L2 announcements — Cilium gratuitously broadcasts ARP for LoadBalancer
+# IPs so they're reachable on the LAN. Pair this with ip-pool.yaml +
+# l2-policy.yaml (in this directory) which together define the LB IP
+# range and which nodes do the announcing.
+l2announcements:
+  enabled: true
+  leaseDuration: "15s"
+  leaseRenewDeadline: "5s"
+  leaseRetryPeriod: "2s"
+
+# Talos 1.9+ has a kernel issue where ARP packets are dropped between XDP
+# and TC layers — Cilium L2 announcements rely on XDP, so without
+# `acceleration: best-effort` the gratuitous ARPs get silently dropped
+# and LoadBalancer IPs aren't reachable from the LAN.
+# Reference: https://github.com/cilium/cilium/discussions/36829
+loadBalancer:
+  acceleration: best-effort
+
+# Bumped from default 5/10 — L2 announcer leases generate steady
+# Kubernetes API traffic. Formula: QPS = numServices * (1 / leaseRenewDeadline).
+# 20/40 gives headroom for ~50 LoadBalancer services.
+k8sClientRateLimit:
+  qps: 20
+  burst: 40
+
+# Gateway API support. Required for everything in
+# infrastructure/networking/gateway/.
+gatewayAPI:
+  enabled: true
+  # externalTrafficPolicy: Local preserves the source IP so apps can do
+  # IP-based access control + see real client IPs in logs. Without Local,
+  # Cilium SNATs source IPs to the node IP at the load balancer.
+  externalTrafficPolicy: Local
+  # Session affinity makes a single client land on the same backend pod
+  # for 3 hours — useful for stateful UIs that don't tolerate mid-session
+  # backend swaps (the ArgoCD UI is one). Disable if you need strict
+  # round-robin distribution.
+  sessionAffinity: true
+  sessionAffinityTimeoutSeconds: 10800
+
+# Hubble — Cilium's observability layer. UI exposed via gateway/
+# httproute-hubble.yaml (port-forward as fallback if gateway not ready).
+hubble:
+  enabled: true
+  relay:
+    enabled: true
+  ui:
+    enabled: true
+
+# Cilium operator runs the IPAM controller and other cluster-scope tasks.
+# 2 replicas with anti-affinity is HA for a 1 CP + 2 worker starter.
+operator:
+  replicas: 2
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              io.cilium/app: operator
+          topologyKey: kubernetes.io/hostname

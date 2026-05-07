@@ -1,0 +1,31 @@
+---
+# CiliumL2AnnouncementPolicy — selects which nodes announce LoadBalancer
+# IPs via gratuitous ARP. With 1 CP + 2 workers and the CP untainted for
+# Longhorn, we still want only workers doing L2 announcements: CPs have
+# better things to do (etcd, kube-apiserver). Workers are also typically
+# the ones with the production-traffic NICs.
+#
+# `interfaces` regex matches eth0, eth1, ens18, ens19 — the names Talos
+# uses on Proxmox VMs (virtio-net presents as ens<N>, kernel >=5.10
+# typically). If your bare-metal nodes have differently-named NICs
+# (e.g. enp1s0), update the regex.
+apiVersion: cilium.io/v2alpha1
+kind: CiliumL2AnnouncementPolicy
+metadata:
+  name: l2-policy
+  namespace: kube-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/compare-options: IgnoreExtraneous
+spec:
+  loadBalancerIPs: true
+  interfaces:
+    - ^(eth|ens|enp)\d+$
+  serviceSelector:
+    matchLabels: {}
+  # Workers only — CPs don't announce. If you scale to 3 CP HA and want
+  # CPs to announce too, drop this nodeSelector.
+  nodeSelector:
+    matchExpressions:
+      - key: node-role.kubernetes.io/control-plane
+        operator: DoesNotExist

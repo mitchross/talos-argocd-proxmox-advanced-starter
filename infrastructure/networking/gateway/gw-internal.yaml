@@ -1,0 +1,61 @@
+---
+# Internal-only Gateway. Reachable on your LAN at __REPLACE_ME_GATEWAY_IP__,
+# serves any HTTPRoute in any namespace that attaches via:
+#
+#   parentRefs:
+#     - kind: Gateway
+#       name: gateway-internal
+#       namespace: gateway
+#       sectionName: https        # ← required (port 443 with TLS)
+#
+# For public exposure (Cloudflare Tunnel, external LB, public IP on a
+# router), see docs/extending/adding-cloudflare.md — that recipe adds an
+# `gw-external.yaml` Gateway with external-DNS labels + tunnel routing.
+#
+# TLS:
+#   The cert-manager.io/cluster-issuer annotation triggers cert-manager's
+#   gateway-shim to auto-create a Certificate resource for this Gateway
+#   when cert-manager comes up at Wave 4. The Certificate writes the
+#   wildcard cert into Secret/cert-wildcard (referenced below by
+#   certificateRefs.name). The default `selfsigned-cluster-issuer` is
+#   defined in infrastructure/controllers/cert-manager/ — browsers will
+#   show a self-signed-cert warning on first visit. To swap to Let's
+#   Encrypt + DNS-01, see docs/extending/adding-cloudflare.md.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: gateway-internal
+  namespace: gateway
+  annotations:
+    cert-manager.io/cluster-issuer: selfsigned-cluster-issuer
+spec:
+  addresses:
+    - type: IPAddress
+      value: __REPLACE_ME_GATEWAY_IP__
+  gatewayClassName: cilium
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      hostname: "*.__REPLACE_ME_DOMAIN__"
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: "*.__REPLACE_ME_DOMAIN__"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: cert-wildcard
+            kind: Secret
+            group: ""
+        # No QUIC/HTTP3 — homelab clients (especially older browsers,
+        # CLI tools, and curl) sometimes fall back poorly. HTTP/2 +
+        # HTTP/1.1 is the safe baseline.
+        options:
+          gateway.networking.k8s.io/alpn-protocols: "h2,http/1.1"
+      allowedRoutes:
+        namespaces:
+          from: All

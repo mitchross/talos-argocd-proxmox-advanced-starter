@@ -231,7 +231,8 @@ Every placeholder lives in code/manifests; `scripts/adapt-to-your-cluster.sh` fi
 | `__REPLACE_ME_GIT_BRANCH__` | The branch ArgoCD tracks | `main` | every Application/AppSet `targetRevision` (defaults to `main`; user can swap to `develop` etc.) |
 | `__REPLACE_ME_CLUSTER_NAME__` | Cilium cluster name (must match `cilium install`) | `homelab` | `infrastructure/networking/cilium/values.yaml`, `scripts/bootstrap-argocd.sh` (in the example `cilium install` command) |
 | `__REPLACE_ME_NODE_CIDR__` | Node IP CIDR | `192.168.1.0/24` | `omni/cluster-template/cluster-template.yaml` (longhorn-storage `validSubnets`), Cilium policy if present |
-| `__REPLACE_ME_GATEWAY_IP__` | LoadBalancer IP for the internal Gateway | `192.168.1.50` | `infrastructure/networking/gateway/gw-internal.yaml` (`spec.addresses[0].value`) |
+| `__REPLACE_ME_LB_IP_POOL__` | CIDR carved from your LAN subnet for the Cilium LoadBalancer IP pool. Gateway IP below must fall within this CIDR. | `192.168.1.32/27` | `infrastructure/networking/cilium/ip-pool.yaml` (`spec.blocks[0].cidr`). Added during 2d. |
+| `__REPLACE_ME_GATEWAY_IP__` | Specific LoadBalancer IP for the internal Gateway (must be in the LB pool CIDR above) | `192.168.1.50` | `infrastructure/networking/gateway/gw-internal.yaml` (`spec.addresses[0].value`) |
 | `__REPLACE_ME_PROXMOX_HOST__` | Proxmox API endpoint | `https://192.168.1.10:8006/api2/json` | `omni/proxmox-provider/config.yaml.example` |
 | `__REPLACE_ME_PROXMOX_TOKEN__` | Proxmox API token id+secret | `root@pam!iac=abc-...` | `omni/proxmox-provider/.env.example` |
 | `__REPLACE_ME_PROXMOX_STORAGE_POOL__` | Proxmox storage selector for VMs | `local-zfs` | `omni/machine-classes/control-plane.yaml`, `omni/machine-classes/worker.yaml` (storage_selector CEL) |
@@ -240,7 +241,7 @@ Every placeholder lives in code/manifests; `scripts/adapt-to-your-cluster.sh` fi
 | `__REPLACE_ME_OMNI_ENDPOINT__` | URL of self-hosted Omni instance | `https://omni.homelab.example.com:443` | `omni/omni/omni.env.example`, `scripts/bootstrap-argocd.sh` example commands |
 | `__REPLACE_ME_OMNI_HOST_IP__` | LAN IP of the host running Omni's docker-compose (used as the SideroLink WireGuard advertised address — must be an IP, not a hostname, for the WireGuard handshake) | `192.168.1.20` | `omni/omni/omni.env.example` (added during Phase 2a) |
 
-**13 placeholders total.** The README's "edits ~10 placeholders" claim is now closer to "~13 placeholders, 5 of which the adapt script can plausibly autodetect (cluster name, branch, gateway IP from a `hostname -I` heuristic, etc.) leaving ~8 the user actually has to think about."
+**14 placeholders total** (after 2d added LB_IP_POOL). The README's "edits ~10 placeholders" claim is now closer to "~14 placeholders, ~5 of which the adapt script can plausibly autodetect (cluster name, branch, gateway IP from a `hostname -I` heuristic, NFS server from a mount probe, etc.) leaving ~9 the user actually has to think about."
 
 The adapt script will also offer to **generate** rather than substitute the Kopia password (a SealedSecret containing 32 random bytes); it does NOT use a placeholder for that — it generates, seals, and writes the YAML directly into `infrastructure/controllers/pvc-plumber/sealed-kopia-password.yaml`.
 

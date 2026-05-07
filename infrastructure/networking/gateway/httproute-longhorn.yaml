@@ -1,0 +1,39 @@
+---
+# Longhorn UI exposed at longhorn.<your-domain>.
+#
+# Same rationale as httproute-argocd.yaml — the HTTPRoute lives next to
+# the Gateway it attaches to, not next to the Longhorn manifests, so
+# waves sequence cleanly.
+#
+# WARNING: this UI has NO authentication by default. Access on the LAN
+# only; do not expose externally without putting an auth proxy in
+# front (oauth2-proxy + your IdP is the standard pattern). For a
+# starter, port-forward only access is the safer choice if you have
+# untrusted devices on your LAN — comment this file out and remove
+# from kustomization.yaml. See docs/extending/ for the auth-proxy
+# recipe.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: longhorn
+  namespace: longhorn-system
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: gateway-internal
+      namespace: gateway
+      sectionName: https
+  hostnames:
+    - "longhorn.__REPLACE_ME_DOMAIN__"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: longhorn-frontend
+          port: 80
+          weight: 1

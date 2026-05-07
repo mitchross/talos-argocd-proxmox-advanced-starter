@@ -1,0 +1,30 @@
+---
+# CiliumLoadBalancerIPPool — the LAN IPs Cilium hands out to LoadBalancer
+# Services. Combined with l2-policy.yaml (which announces these IPs via
+# ARP), this is what makes `Service.type=LoadBalancer` actually reachable
+# from your LAN without needing MetalLB or a cloud LB.
+#
+# Substitute __REPLACE_ME_LB_IP_POOL__ with a CIDR carved out of your LAN
+# subnet, e.g. `192.168.1.32/27` (gives you 32 IPs from .32 to .63).
+# Reserve at least one specific IP for the internal Gateway —
+# __REPLACE_ME_GATEWAY_IP__ in `gateway/gw-internal.yaml` is set to a
+# specific IP within this CIDR.
+apiVersion: cilium.io/v2alpha1
+kind: CiliumLoadBalancerIPPool
+metadata:
+  name: lan-pool
+  namespace: kube-system
+  annotations:
+    # Wave 1 — apply AFTER Cilium core is up at Wave 0; the LB IPAM
+    # controller is part of cilium-operator and needs to be running
+    # before the pool is admitted.
+    argocd.argoproj.io/sync-wave: "1"
+    # Don't churn the LBs on every sync — extraneous diff-noise (e.g.
+    # status fields the controller writes) shouldn't trigger reassignments.
+    argocd.argoproj.io/compare-options: IgnoreExtraneous
+spec:
+  blocks:
+    - cidr: "__REPLACE_ME_LB_IP_POOL__"
+  allowFirstLastIPs: "No"
+  serviceSelector:
+    matchLabels: {}
