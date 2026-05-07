@@ -1,0 +1,59 @@
+# The manual-seed Application that turns ArgoCD into a self-managing
+# GitOps controller. Apply once with `kubectl apply -f root.yaml` after
+# the chart is installed (scripts/bootstrap-argocd.sh does this for you).
+#
+# This Application points at apps/ and creates the AppProjects + bootstrap
+# Applications + AppSets that make up the rest of the GitOps tree.
+#
+# It is intentionally NOT included in apps/kustomization.yaml — including
+# it there would create an SSA-ownership loop where root.yaml manages the
+# directory that contains root.yaml, and a stale field could cascade into
+# a self-delete.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+  finalizers:
+  - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: __REPLACE_ME_GIT_REPO_URL__
+    targetRevision: __REPLACE_ME_GIT_BRANCH__
+    path: infrastructure/controllers/argocd/apps
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+    - ServerSideApply=true
+    - RespectIgnoreDifferences=true
+    retry:
+      # Bounded retry on root (children keep `limit: -1`). A stuck sync op
+      # holds a frozen manifest snapshot; with infinite retries, a failed
+      # child can wedge the entire app-of-apps tree behind a stale snapshot
+      # forever. With `limit: 10`, the op fails cleanly after ~30 min and
+      # selfHeal triggers a fresh sync against current git on the next
+      # reconcile. Functionally still infinite — just with manifest refresh
+      # between ops.
+      limit: 10
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  ignoreDifferences:
+  # Don't fight ArgoCD over its own Application/ApplicationSet status.
+  - group: argoproj.io
+    kind: Application
+    jsonPointers:
+    - /status
+    - /operation
+  - group: argoproj.io
+    kind: ApplicationSet
+    jsonPointers:
+    - /status

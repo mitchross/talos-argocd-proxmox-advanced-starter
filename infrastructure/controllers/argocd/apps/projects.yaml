@@ -1,0 +1,63 @@
+# Single-operator AppProjects — UI grouping and policy intent only, not
+# multi-tenant trust boundaries. If you ever want to invite untrusted
+# contributors or external automation to write into apps/, tighten the
+# `destinations` and `clusterResourceWhitelist` fields below first.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: infrastructure
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+  - resources-finalizer.argocd.argoproj.io
+spec:
+  description: "Infrastructure components — controllers, networking, storage, databases."
+  sourceRepos:
+  - __REPLACE_ME_GIT_REPO_URL__
+  destinations:
+  - namespace: '*'
+    server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+  - group: '*'
+    kind: '*'
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: monitoring
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+  - resources-finalizer.argocd.argoproj.io
+spec:
+  description: "Observability stack — Prometheus, Grafana, Loki."
+  sourceRepos:
+  - __REPLACE_ME_GIT_REPO_URL__
+  destinations:
+  - namespace: '*'
+    server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+  - group: '*'
+    kind: '*'
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: apps
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+  - resources-finalizer.argocd.argoproj.io
+spec:
+  description: "User applications. The three demos ship here by default; add your own to apps/."
+  sourceRepos:
+  - __REPLACE_ME_GIT_REPO_URL__
+  destinations:
+  - namespace: '*'
+    server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+  - group: '*'
+    kind: '*'

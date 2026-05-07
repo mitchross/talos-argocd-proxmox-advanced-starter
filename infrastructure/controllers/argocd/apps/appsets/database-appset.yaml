@@ -1,0 +1,87 @@
+# Database ApplicationSet — wave 4. Discovers `infrastructure/database/*/*`
+# (two levels deep so each operator + each instance becomes its own
+# Application).
+#
+# In the default starter the only thing this AppSet discovers is
+# `infrastructure/database/cnpg-operator/cloudnative-pg-operator/` (the
+# CNPG operator itself). The postgres-demo cluster lives under
+# `apps/postgres-demo/` and is discovered by the apps AppSet at Wave 6.
+#
+# Why is database its own AppSet, given it currently discovers only one
+# thing?
+#   - It carries `selfHeal: false`, which the infrastructure AppSet
+#     can't (its components want self-heal). selfHeal: false matters for
+#     CNPG: during database disaster recovery, operators apply
+#     `argocd.argoproj.io/skip-reconcile` annotations to pause ArgoCD on
+#     the Cluster CR. Without selfHeal: false, ArgoCD's
+#     ApplicationSet controller strips those annotations on the next
+#     sync and recovery overlays get clobbered.
+#   - It carries `ignoreApplicationDifferences` for the same annotation
+#     so the AppSet controller itself doesn't strip it on its inner
+#     Applications.
+#   - The AppSet shape is pedagogical: as you add more databases (a
+#     second CNPG cluster, a Redis instance, an Etcd, etc.) the model
+#     scales without further argocd config changes.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: database
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  # Preserve skip-reconcile during DR recovery. Without this, the
+  # ApplicationSet controller would strip that annotation between syncs
+  # and you'd lose the manual pause that DR overlays depend on.
+  # See docs/extending/disaster-recovery.md.
+  ignoreApplicationDifferences:
+  - jsonPointers:
+    - /metadata/annotations/argocd.argoproj.io~1skip-reconcile
+  generators:
+  - git:
+      repoURL: __REPLACE_ME_GIT_REPO_URL__
+      revision: __REPLACE_ME_GIT_BRANCH__
+      directories:
+      - path: infrastructure/database/*/*
+  template:
+    metadata:
+      name: '{{path.basename}}'
+      annotations:
+        argocd.argoproj.io/manifest-generate-paths: '{{path}}'
+        argocd.argoproj.io/sync-wave: "4"
+      labels:
+        app.kubernetes.io/part-of: database
+    spec:
+      project: infrastructure
+      revisionHistoryLimit: 3
+      source:
+        repoURL: __REPLACE_ME_GIT_REPO_URL__
+        targetRevision: __REPLACE_ME_GIT_BRANCH__
+        path: '{{path}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{path.basename}}'
+      syncPolicy:
+        automated:
+          prune: true
+          # selfHeal: false because CNPG cluster recovery uses
+          # `skip-reconcile` annotations that ArgoCD selfHeal would strip.
+          # See docs/extending/disaster-recovery.md.
+          selfHeal: false
+          allowEmpty: false
+        syncOptions:
+        - CreateNamespace=true
+        - ServerSideApply=true
+        - RespectIgnoreDifferences=true
+        - Replace=false
+        retry:
+          limit: -1
+          backoff:
+            duration: 10s
+            factor: 2
+            maxDuration: 10m
+      ignoreDifferences:
+      - group: postgresql.cnpg.io
+        kind: Cluster
+        jsonPointers:
+        - /metadata/generation

@@ -1,9 +1,13 @@
 ---
 # Apply with: omnictl apply -f worker.yaml
 #
-# General-purpose worker VM specs. 8 cores, 32 GB RAM, 200 GB disk is a
-# reasonable starting point for the GitOps stack plus the three demo apps.
-# Bump cores/memory/disk_size if you plan to run real workloads on top.
+# General-purpose worker VM specs. 8 cores, 24 GB RAM, 200 GB disk per
+# worker. With 2 workers (the starter default), that's 48 GB RAM /
+# 16 vCPU for workloads — comfortably fits the GitOps stack, monitoring,
+# and the three demo apps with room to spare.
+#
+# Bump cores/memory/disk_size before applying if you plan to run heavier
+# real workloads on top.
 #
 # This starter ships single-NIC workers. If you have a separate storage
 # network (10G NIC to TrueNAS over vmbr1, etc.), see
@@ -25,7 +29,7 @@ spec:
     providerdata: |
       cores: 8
       sockets: 1
-      memory: 32000
+      memory: 24000
       disk_size: 200
       network_bridge: vmbr0
       storage_selector: name == "__REPLACE_ME_PROXMOX_STORAGE_POOL__"

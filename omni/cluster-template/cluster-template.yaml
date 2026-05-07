@@ -1,10 +1,28 @@
 # ==============================================================================
 # omnictl cluster template sync -v -f cluster-template.yaml
 # ==============================================================================
-# Cluster spec for the starter homelab cluster: 3 control planes + 3 workers,
-# no GPU node, no Cloudflare integration. After applying this template, Omni
-# will provision the VMs in Proxmox via the infrastructure provider, install
-# Talos, and assemble the cluster.
+# Cluster spec for the starter homelab cluster: 1 control plane + 2 workers,
+# no GPU node, no Cloudflare integration. Total footprint ~56 GB RAM /
+# 20 vCPU — fits on a single 64GB Proxmox host. To upgrade to 3 CP +
+# N workers HA, see docs/extending/scaling-to-ha.md.
+#
+# Why a single CP? This is a starter, not a production cluster. A single
+# CP is fine for learning and for the demos in this repo. ArgoCD,
+# AppSets, the pvc-plumber operator, Longhorn — none of them require an
+# HA control plane to function. When you're ready for production, add
+# two more CPs (size: 3) and re-run `omnictl cluster template sync`.
+#
+# Why is the CP untainted? Longhorn defaults to a 2-replica
+# StorageClass; with 2 worker nodes that's already enough, but having
+# the CP available as a third storage candidate is cheap insurance.
+# `allowSchedulingOnControlPlanes: true` removes the NoSchedule taint
+# Talos applies by default. If you scale to 3 CPs later, you'll
+# probably want to flip this back to false (HA control planes
+# shouldn't accept arbitrary workloads).
+#
+# After applying this template, Omni will provision the VMs in Proxmox
+# via the infrastructure provider, install Talos, and assemble the
+# cluster.
 #
 # Critical Talos 1.13 detail — `install-disk` patch is mandatory.
 # Talos 1.13 replaced the old install/upgrade flow with the LifecycleService
@@ -50,11 +68,18 @@ patches:
       machine:
         install:
           disk: /dev/sda
+  - name: allow-scheduling-on-control-planes
+    # Untaint the control plane so workloads (specifically: Longhorn's
+    # storage replicas) can land there. Safe for a single-CP starter; flip
+    # back to false when you scale to 3 CPs for HA.
+    inline:
+      cluster:
+        allowSchedulingOnControlPlanes: true
 ---
 kind: ControlPlane
 machineClass:
   name: proxmox-control-plane
-  size: 3
+  size: 1
 systemExtensions:
   - siderolabs/iscsi-tools
   - siderolabs/nfs-utils
@@ -66,7 +91,7 @@ kind: Workers
 name: workers
 machineClass:
   name: proxmox-worker
-  size: 3
+  size: 2
 systemExtensions:
   - siderolabs/iscsi-tools
   - siderolabs/nfs-utils

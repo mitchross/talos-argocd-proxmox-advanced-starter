@@ -1,10 +1,13 @@
 ---
 # Apply with: omnictl apply -f control-plane.yaml
 #
-# Control-plane VM specs. 4 cores, 16 GB RAM, 60 GB disk is enough for a
-# 3-node etcd cluster on a homelab Proxmox host. Etcd is latency-sensitive
-# so prefer SSD/NVMe storage if available — the disk_* tunables below are
-# set up to take advantage of either.
+# Control-plane VM specs. 4 cores, 8 GB RAM, 60 GB disk is plenty for a
+# single-CP starter. Etcd is latency-sensitive so prefer SSD/NVMe storage
+# if available — the disk_* tunables below are set up to take advantage
+# of either.
+#
+# When you scale to a 3-CP HA cluster (see docs/extending/scaling-to-ha.md),
+# bump memory to 16000 — the bigger etcd quorum benefits from headroom.
 #
 # storage_selector uses CEL — see the upstream README for the full grammar:
 #   https://github.com/siderolabs/omni-infra-provider-proxmox
@@ -22,7 +25,7 @@ spec:
     providerdata: |
       cores: 4
       sockets: 1
-      memory: 16000
+      memory: 8000
       disk_size: 60
       network_bridge: vmbr0
       storage_selector: name == "__REPLACE_ME_PROXMOX_STORAGE_POOL__"

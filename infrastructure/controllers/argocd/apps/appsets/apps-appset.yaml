@@ -1,0 +1,58 @@
+# Apps ApplicationSet — wave 6. Discovers `apps/*` (one level deep) and
+# creates one Application per demo. Default starter ships:
+#   - apps/nginx-demo/      (Gateway API HTTPRoute demo)
+#   - apps/stateful-demo/   (`backup: hourly` PVC label demo)
+#   - apps/postgres-demo/   (CNPG Cluster CR demo)
+#
+# To add your own app: drop a new directory under `apps/` with a
+# `kustomization.yaml` and push to git. ArgoCD picks it up automatically.
+# See docs/extending/adding-an-app.md for a cookbook walkthrough.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: apps
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "6"
+spec:
+  generators:
+  - git:
+      repoURL: __REPLACE_ME_GIT_REPO_URL__
+      revision: __REPLACE_ME_GIT_BRANCH__
+      directories:
+      - path: apps/*
+  template:
+    metadata:
+      name: 'app-{{path.basename}}'
+      annotations:
+        argocd.argoproj.io/manifest-generate-paths: '{{path}}'
+        argocd.argoproj.io/sync-wave: "6"
+    spec:
+      project: apps
+      revisionHistoryLimit: 3
+      source:
+        repoURL: __REPLACE_ME_GIT_REPO_URL__
+        targetRevision: __REPLACE_ME_GIT_BRANCH__
+        path: '{{path}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{path.basename}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+          allowEmpty: false
+        syncOptions:
+        - CreateNamespace=true
+        - ServerSideApply=true
+        - RespectIgnoreDifferences=true
+        - Replace=false
+        retry:
+          limit: -1
+          backoff:
+            duration: 10s
+            factor: 2
+            maxDuration: 10m
+      info:
+      - name: 'Description'
+        value: 'Demo application: {{path.basename}}'

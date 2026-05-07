@@ -36,7 +36,7 @@ omni/
 │   ├── control-plane.yaml  # 4c / 16G / 60G — for etcd nodes
 │   └── worker.yaml         # 8c / 32G / 200G — for workloads
 ├── cluster-template/
-│   └── cluster-template.yaml  # `omnictl cluster template sync -f` this once
+│   └── cluster-template.yaml  # 1 CP + 2 workers; sync once with `omnictl cluster template sync -f`
 ├── bootstrap.sh            # Helper: apply machine-classes + cluster-template
 └── docs/
     ├── PREREQUISITES.md    # Things to have set up before starting

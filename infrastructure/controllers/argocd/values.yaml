@@ -1,0 +1,141 @@
+# ArgoCD Helm values for the starter cluster.
+#
+# This is a *starter* configuration: HA Redis off, single-replica server
+# and repo-server, chart-default resource requests. The source homelab's
+# values.yaml has VPA-tuned resource sizes (CPU 2000m / 4Gi memory on
+# the controller, etc.) which make sense for a 50-app cluster but are
+# overkill for ~10 apps. Tune up after you scale past a dozen
+# Applications — `kubectl top pod -n argocd` is your friend.
+
+global:
+  # External access goes through Gateway API / HTTPRoute, not Ingress.
+  ingress:
+    enabled: false
+
+# ConfigMaps and feature flags
+configs:
+  params:
+    # Allow the server to run in HTTP mode behind the Gateway (TLS terminated
+    # at the Gateway). If you swap to a different ingress topology, flip this
+    # back to false.
+    server.insecure: "true"
+  cm:
+    url: "https://argocd.__REPLACE_ME_DOMAIN__"
+    # Required for Helm + Kustomize composition (used by infrastructure/
+    # controllers/argocd/kustomization.yaml itself, plus monitoring/).
+    kustomize.buildOptions: "--enable-helm"
+    # Server-side diff matches ServerSideApply — without this, client-side
+    # diff and server-side apply disagree on what's "in sync" and ConfigMaps
+    # silently fail to apply on subsequent syncs.
+    resource.server-side-diff: "true"
+    # Default ArgoCD reconciliation interval (180s) with modest jitter.
+    timeout.reconciliation: "180s"
+    timeout.reconciliation.jitter: "60s"
+
+    # ==========================================================================
+    # Global ignoreDifferences — diff-noise cleanup for resources that get
+    # mutated by their controllers after creation. Living here (cluster-wide)
+    # means individual Applications and AppSets only need to carry app-specific
+    # ignore rules, not these system-level ones.
+    # ==========================================================================
+    resource.customizations.ignoreDifferences.gateway.networking.k8s.io_HTTPRoute: |
+      jqPathExpressions:
+      - '.spec.parentRefs[]? | select(.group == null or .kind == null)'
+      - .spec.rules[].backendRefs[].group
+      - .spec.rules[].backendRefs[].kind
+      - .spec.rules[].backendRefs[].weight
+      jsonPointers:
+      - /spec/parentRefs
+    resource.customizations.ignoreDifferences._PersistentVolumeClaim: |
+      jqPathExpressions:
+      - .spec.dataSourceRef
+      - .spec.dataSource
+      - .spec.volumeName
+      - .spec.resources.requests.storage
+    resource.customizations.ignoreDifferences.apiextensions.k8s.io_CustomResourceDefinition: |
+      jqPathExpressions:
+      - .metadata.generation
+      - .spec.conversion
+    resource.customizations.ignoreDifferences.all: |
+      managedFieldsManagers:
+      - kube-controller-manager
+      - kube-scheduler
+
+    # ==========================================================================
+    # Custom health checks — restore Application health check (removed in
+    # ArgoCD 1.8 but required for app-of-apps sync waves to actually
+    # gate progression) and add VolSync ReplicationSource/Destination
+    # health checks so backup/restore status surfaces in the ArgoCD UI.
+    # ==========================================================================
+    resource.customizations.health.argoproj.io_Application: |
+      hs = {}
+      hs.status = "Progressing"
+      hs.message = ""
+      if obj.status ~= nil then
+        if obj.status.health ~= nil then
+          hs.status = obj.status.health.status
+          if obj.status.health.message ~= nil then
+            hs.message = obj.status.health.message
+          end
+        end
+      end
+      return hs
+    resource.customizations.health.volsync.backube_ReplicationSource: |
+      hs = {}
+      if obj.status ~= nil then
+        if obj.status.lastSyncTime ~= nil then
+          hs.status = "Healthy"
+          hs.message = "Last sync: " .. obj.status.lastSyncTime
+          return hs
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "Waiting for first sync"
+      return hs
+    resource.customizations.health.volsync.backube_ReplicationDestination: |
+      hs = {}
+      if obj.status ~= nil and obj.status.latestImage ~= nil then
+        hs.status = "Healthy"
+        hs.message = "Ready for restore"
+        return hs
+      end
+      hs.status = "Progressing"
+      hs.message = "Initializing"
+      return hs
+
+server:
+  # Single replica is fine for a starter; bump to 2 for HA when you scale up.
+  replicas: 1
+  ingress:
+    enabled: false
+
+applicationSet:
+  enabled: true
+
+# HA disabled by default — runs Redis as a single pod. Flip to `true` once
+# you've added more control planes / workers and want true HA.
+ha:
+  enabled: false
+
+# Dex disabled — external authentication (Auth0, OIDC, etc.) wires up
+# directly to argocd-server via the dex.config block in the cm if you
+# need it. The starter's expected workflow is local kubectl port-forward
+# or Gateway HTTPRoute with your existing SSO.
+dex:
+  enabled: false
+
+notifications:
+  enabled: false
+
+hpa:
+  enabled: false
+
+# Disable the redis-secret-init PreSync hook. It generates the redis auth
+# secret on first install; once present, the chart re-runs the Job on every
+# sync. On chart upgrades the Job's hook-delete-policy can race with
+# Argo's operationState tracking and wedge syncs indefinitely. The
+# `argocd-redis` Secret persists across upgrades, so disabling the
+# bootstrapper is safe and idempotent. (Source-cluster history: incident
+# 2026-05-01 when a chart bump tripped this.)
+redisSecretInit:
+  enabled: false

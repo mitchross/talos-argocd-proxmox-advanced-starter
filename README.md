@@ -67,8 +67,12 @@ What IS in:
 
 ## Quick start
 
-> **Prerequisites**: Proxmox VE host with ≥48GB RAM, ≥600GB storage
-> for the cluster, network access to GitHub.
+> **Prerequisites**: Proxmox VE host with ≥64GB RAM, ≥600GB storage
+> for the cluster (1 CP + 2 workers default footprint is ~56GB RAM,
+> 720GB disk; the rest is buffer for Longhorn overhead and demo PVCs),
+> network access to GitHub. To upgrade to a 3 CP + N worker HA
+> cluster after the starter is up, see
+> [`docs/extending/scaling-to-ha.md`](docs/extending/scaling-to-ha.md).
 
 ```bash
 # 1. Clone the starter

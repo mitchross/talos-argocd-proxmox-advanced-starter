@@ -1,0 +1,71 @@
+# Infrastructure ApplicationSet — wave 4. Discovers the listed
+# directories under infrastructure/ and generates one Application per
+# directory.
+#
+# Why hand-listed paths and not glob?
+# Glob discovery (`infrastructure/*`) makes adding new infra components
+# trivial but is fragile: any subdirectory becomes an Application,
+# including ones that should NOT be argo-managed (helper Kustomize
+# components, generated values, etc.). The source cluster also hit a
+# repo-server render-cache loop on glob discovery in 2026-04-20 that
+# caused new generator paths to silently revert. Hand-listed paths dodge
+# both problems and the explicit list is cheap to maintain — there are
+# only a few infra components in this starter.
+#
+# Note: longhorn, snapshot-controller, volsync, and pvc-plumber are
+# NOT listed here. They have dedicated standalone Applications at Wave 1
+# (see core-dependencies/) so storage is healthy before this AppSet
+# fires at Wave 4.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: infrastructure
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  generators:
+  - git:
+      repoURL: __REPLACE_ME_GIT_REPO_URL__
+      revision: __REPLACE_ME_GIT_BRANCH__
+      directories:
+      - path: infrastructure/controllers/cert-manager
+      - path: infrastructure/networking/gateway
+      - path: infrastructure/storage/csi-driver-nfs
+  template:
+    metadata:
+      name: '{{path.basename}}'
+      annotations:
+        argocd.argoproj.io/manifest-generate-paths: '{{path}}'
+        argocd.argoproj.io/sync-wave: "4"
+      labels:
+        app.kubernetes.io/part-of: infrastructure
+    spec:
+      project: infrastructure
+      revisionHistoryLimit: 3
+      source:
+        repoURL: __REPLACE_ME_GIT_REPO_URL__
+        targetRevision: __REPLACE_ME_GIT_BRANCH__
+        path: '{{path}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{path.basename}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+          allowEmpty: false
+        syncOptions:
+        - CreateNamespace=true
+        - ServerSideApply=true
+        - RespectIgnoreDifferences=true
+        - Replace=false
+        retry:
+          # Bootstrap apps must never permanently die; ArgoCD will keep
+          # retrying until the cluster reaches steady state. selfHeal kicks
+          # in between attempts to refresh against current git.
+          limit: -1
+          backoff:
+            duration: 10s
+            factor: 2
+            maxDuration: 10m

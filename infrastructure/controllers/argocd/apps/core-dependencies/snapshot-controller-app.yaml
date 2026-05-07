@@ -1,0 +1,36 @@
+# snapshot-controller — manages VolumeSnapshot CRDs and their lifecycle.
+# Required by Longhorn's CSI snapshotting (which VolSync uses as its
+# Kopia copy-method). Wave 1 alongside Longhorn + VolSync.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: snapshot-controller
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  labels:
+    app.kubernetes.io/part-of: infrastructure
+spec:
+  project: infrastructure
+  source:
+    repoURL: __REPLACE_ME_GIT_REPO_URL__
+    targetRevision: __REPLACE_ME_GIT_BRANCH__
+    path: infrastructure/storage/snapshot-controller
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: snapshot-controller
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+    - CreateNamespace=true
+    - ServerSideApply=true
+    - RespectIgnoreDifferences=true
+    retry:
+      limit: -1
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 5m

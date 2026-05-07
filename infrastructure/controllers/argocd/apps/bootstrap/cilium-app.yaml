@@ -1,0 +1,68 @@
+# Cilium — CNI + Gateway API. Wave 0: must be healthy before any pods can
+# schedule. The bootstrap script does an initial `cilium install` at the
+# correct version BEFORE applying root.yaml so this Application is
+# upgrading existing Cilium, not installing it from scratch (which won't
+# work — there's no networking yet to apply manifests with).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cilium
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  labels:
+    app.kubernetes.io/part-of: infrastructure
+spec:
+  project: infrastructure
+  source:
+    repoURL: __REPLACE_ME_GIT_REPO_URL__
+    targetRevision: __REPLACE_ME_GIT_BRANCH__
+    path: infrastructure/networking/cilium
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+    - CreateNamespace=true
+    - ServerSideApply=true
+    - RespectIgnoreDifferences=true
+    retry:
+      limit: -1
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
+  # Don't fight Cilium over its self-rotating Hubble certs and CA secrets.
+  # Cilium regenerates these in the background; if ArgoCD treats them as
+  # drift it triggers reconciliation loops that can break TLS handshakes
+  # mid-flight.
+  ignoreDifferences:
+  - group: ""
+    kind: ConfigMap
+    name: hubble-ca-cert
+    jsonPointers:
+    - /data
+  - kind: Secret
+    name: cilium-ca
+    namespace: kube-system
+    jsonPointers:
+      - /data/ca.crt
+      - /data/ca.key
+  - kind: Secret
+    name: hubble-server-certs
+    namespace: kube-system
+    jsonPointers:
+      - /data/ca.crt
+      - /data/tls.crt
+      - /data/tls.key
+  - kind: Secret
+    name: hubble-relay-client-certs
+    namespace: kube-system
+    jsonPointers:
+      - /data/ca.crt
+      - /data/tls.crt
+      - /data/tls.key

@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: argocd
+resources:
+  - ns.yaml
+
+# NOTE: http-route.yaml lives in infrastructure/networking/gateway/, not here.
+# Including it at wave 0 would deadlock the bootstrap: HTTPRoute stays
+# Progressing forever with no Gateway, blocking all subsequent sync waves.
+#
+# NOTE: root.yaml is NOT listed here. It's applied once by the bootstrap
+# script (scripts/bootstrap-argocd.sh) and is intentionally not
+# self-managed. Including it here would create a circular SSA-ownership
+# loop: root.yaml creates the argocd Application, which manages this
+# directory, which would re-include root.yaml.
+helmCharts:
+  - name: argo-cd
+    repo: https://argoproj.github.io/argo-helm
+    version: "9.5.9"
+    releaseName: argocd
+    namespace: argocd
+    valuesFile: values.yaml
+    includeCRDs: true
