@@ -1,0 +1,28 @@
+# snapshot-controller (Piraeus/Linbit chart — the standard distribution
+# of the upstream registry.k8s.io/sig-storage/snapshot-controller image).
+#
+# This is the cluster-wide controller that watches VolumeSnapshot /
+# VolumeSnapshotContent CRs and drives the CSI snapshot lifecycle. It
+# is a hard dependency for Longhorn snapshots and for any backup
+# tooling that uses CSI snapshots (VolSync uses them via Longhorn's
+# VolumeSnapshotClass; see infrastructure/storage/longhorn/volumesnapshotclass.yaml).
+
+replicaCount: 2
+
+image:
+  repository: registry.k8s.io/sig-storage/snapshot-controller
+  tag: v8.5.0
+
+# Spread the two replicas across nodes when possible.
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - snapshot-controller
+          topologyKey: kubernetes.io/hostname

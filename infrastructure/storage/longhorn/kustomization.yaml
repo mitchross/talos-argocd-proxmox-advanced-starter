@@ -1,0 +1,26 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: longhorn-system
+
+# NOTE: the Longhorn UI's HTTPRoute lives at
+# `infrastructure/networking/gateway/httproute-longhorn.yaml` (Wave 4),
+# not here — same convention architect used for argocd's HTTPRoute.
+# The HTTPRoute attaches to gateway-internal which is itself a Wave 4
+# resource, so colocating routes with the Gateway keeps wave ordering
+# clean.
+resources:
+  - namespace.yaml
+  - volumesnapshotclass.yaml
+  - node-failure-settings.yaml
+
+helmCharts:
+  - name: longhorn
+    repo: https://charts.longhorn.io
+    # Pinned. Renovate (added in Phase 2j) gates major bumps; never
+    # float — Longhorn major upgrades require the upgrade-checker job
+    # which we've disabled in values.yaml.
+    version: 1.11.1
+    releaseName: longhorn
+    namespace: longhorn-system
+    valuesFile: values.yaml
+    includeCRDs: true

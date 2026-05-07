@@ -1,0 +1,20 @@
+---
+# Snapshot class consumed by VolSync's Kopia mover when it freezes a
+# source PVC for a backup pass.
+#
+# Distinct name (`longhorn-snapclass`) from the cluster-default
+# (`longhorn`, defined in ../longhorn/volumesnapshotclass.yaml) because
+# VolSync's ReplicationSource references this one explicitly via
+# `volumeSnapshotClassName: longhorn-snapclass` and we don't want it
+# resolving to the cluster default by accident — that lets us swap the
+# default out (e.g. to a different CSI driver) without breaking VolSync.
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotClass
+metadata:
+  name: longhorn-snapclass
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+driver: driver.longhorn.io
+deletionPolicy: Delete
+parameters:
+  type: snap

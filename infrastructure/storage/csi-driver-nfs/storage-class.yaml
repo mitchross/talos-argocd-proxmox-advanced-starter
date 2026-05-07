@@ -1,0 +1,79 @@
+---
+# Generic NFS StorageClass.
+#
+# Substituted by `scripts/adapt-to-your-cluster.sh`. Use the same
+# `__REPLACE_ME_NFS_SERVER__` / `__REPLACE_ME_NFS_PATH__` values you
+# point pvc-plumber and volsync at — the script handles all three
+# substitutions consistently.
+#
+# Mount options are tuned for a 10G LAN:
+#   - nfsvers=4.1   — modern NFSv4; required for stateful pNFS clients
+#   - nolock        — kubelet doesn't use NFS locking; skipping it
+#                     avoids stuck mount-cleanup operations
+#   - rsize / wsize — 1 MiB I/O units; match TrueNAS/typical NAS defaults
+#   - noatime       — don't update access times on read; reduces NFS
+#                     write traffic
+#   - nconnect=16   — 16 parallel TCP connections per mount; meaningful
+#                     speedup for large sequential reads. On 1G LANs
+#                     drop to 4–8.
+#
+# reclaimPolicy: Delete means kustomize-deletion of the PVC also
+# removes the dynamically-provisioned subdirectory on the NFS share.
+# Switch to Retain if you want stricter operator-controlled deletion.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: nfs
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+provisioner: nfs.csi.k8s.io
+parameters:
+  server: __REPLACE_ME_NFS_SERVER__
+  share: __REPLACE_ME_NFS_PATH__
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+mountOptions:
+  - nfsvers=4.1
+  - nolock
+  - tcp
+  - rsize=1048576
+  - wsize=1048576
+  - noatime
+  - nconnect=16
+
+# ---------------------------------------------------------------------
+# Static PV pattern (NOT shipped — recipe only)
+# ---------------------------------------------------------------------
+# The dynamic provisioner above creates a fresh subdirectory under
+# `__REPLACE_ME_NFS_PATH__` per PVC. That's the right shape when the
+# data is owned by the cluster.
+#
+# When you need to mount EXISTING data (a photo library, a media
+# share, anything the cluster shouldn't own), use a static
+# PersistentVolume instead:
+#
+#     apiVersion: v1
+#     kind: PersistentVolume
+#     metadata:
+#       name: my-existing-nfs-data
+#     spec:
+#       capacity:
+#         storage: 2Ti                       # informational only on NFS
+#       accessModes:
+#         - ReadOnlyMany                     # or ReadWriteMany
+#       persistentVolumeReclaimPolicy: Retain
+#       storageClassName: ""                 # explicitly no class
+#       mountOptions:
+#         - nfsvers=4.1
+#         - ro                               # if read-only
+#       csi:
+#         driver: nfs.csi.k8s.io
+#         volumeHandle: my-existing-nfs-data # any unique string
+#         volumeAttributes:
+#           server: "<your-nfs-server-ip>"
+#           share: "/path/to/existing/share"
+#
+# Then a PVC with `volumeName: my-existing-nfs-data` binds to it.
+# Don't forget `storageClassName: ""` on the PVC — without it
+# Kubernetes auto-fills the default StorageClass and the binding
+# fails. See `docs/extending/adding-an-app.md` for the worked recipe.

@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: longhorn-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  labels:
+    # Longhorn's instance-manager / engine-image / share-manager pods
+    # need privileged hostPath / hostNetwork access. PSA `privileged`
+    # is the documented requirement (see Longhorn install docs).
+    pod-security.kubernetes.io/enforce: privileged

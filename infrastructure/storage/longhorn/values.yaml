@@ -1,0 +1,87 @@
+# Longhorn Helm values.
+#
+# Manage all Longhorn settings via this file (and node-failure-settings.yaml
+# for the post-install settings the controller reconciles) to keep the
+# cluster declarative. UI-applied changes get silently reverted.
+#
+# Sized for the starter's default 1 CP + 2 worker footprint with
+# `allowSchedulingOnControlPlanes: true` (set in
+# `omni/cluster-template/cluster-template.yaml`) — three schedulable
+# nodes total. defaultClassReplicaCount=2 (see persistence below) is
+# the sweet spot: tolerates a single-node failure without forcing
+# a copy onto every node.
+defaultSettings:
+  # Longhorn 1.10+ consolidates settings for V1/V2 data engines. Use a
+  # single scalar for V1-only clusters (the starter default); JSON
+  # `{"v1":"...","v2":"..."}` is only needed if you enable V2.
+  defaultDataPath: "/var/lib/longhorn"
+  storageMinimalAvailablePercentage: "10"
+  # Over-provisioning ceiling. 200% = each PVC reserves replicaCount × size,
+  # so a 100Gi PVC at replicaCount=2 reserves 200Gi against the schedule
+  # cap. Keep at the chart default for the starter — homelab clusters
+  # with bigger workloads can bump this in node-failure-settings.yaml
+  # (post-install, the longhorn controller manages this via CRD).
+  storageOverProvisioningPercentage: "200"
+  allowRecurringJobWhileVolumeDetached: "true"
+  replicaAutoBalance: "best-effort"
+  # Plain scalars — JSON-format values cause "mismatched data engines"
+  # errors in longhorn-manager logs on V1-only clusters.
+  fastReplicaRebuildEnabled: "true"
+  engineReplicaTimeout: "8"
+  # Sized for a small cluster. Bump (e.g. 8) on bigger hardware where
+  # multiple instance-managers per node compete for CPU.
+  guaranteedInstanceManagerCPU: "4"
+  # Memory floor for instance-manager + share-manager pods. Without this
+  # they show ZERO requests and break the scheduler's bin-packing math
+  # under memory pressure.
+  guaranteedInstanceManagerMemory: "1Gi"
+  # Performance: prefer local disk for reads when a replica lives on
+  # the same node as the workload pod.
+  defaultDataLocality: "best-effort"
+  # Limit snapshot accumulation per volume — prevents runaway disk
+  # usage from VolSync / pvc-plumber chained snapshots.
+  snapshotMaxCount: "10"
+  autoCleanupSystemGeneratedSnapshot: "true"
+  # Allow Longhorn to auto-upgrade volume engines after manager upgrades.
+  concurrentAutomaticEngineUpgradePerNodeLimit: "3"
+  # Allow detached volumes to rebuild replicas. Fixes VolSync clone
+  # volumes stuck in VolumeCloneCopyCompleteAwaitingHealthy when
+  # replicaCount > 1.
+  offlineReplicaRebuilding: "true"
+
+# Disable the pre-upgrade check Job. ArgoCD treats Job mutations as sync
+# failures; the chart's check is also redundant with the validate
+# scripts in scripts/.
+preUpgradeChecker:
+  jobEnabled: false
+
+persistence:
+  # Set the chart-default StorageClass (`longhorn`) as the cluster
+  # default. Demo apps under apps/ pick this up automatically.
+  defaultClass: true
+  # Default replica count for the `longhorn` StorageClass.
+  #
+  # Choice: 2 (matches the source cluster).
+  #   replicaCount=1 → losing any node breaks every PVC scheduled there
+  #     and leaves stale-attachment cascades. Don't.
+  #   replicaCount=2 → losing one node keeps data online via the
+  #     surviving replica. Doubles raw storage usage, which is fine
+  #     for a homelab budget.
+  #   replicaCount=3 → tolerates two-node failure (i.e. all three on a
+  #     1 CP + 2 worker cluster), but pins a copy to the control-plane
+  #     node — which gets rebooted during cluster upgrades. That makes
+  #     "3 schedulable nodes" optimistic in practice. Stick with 2.
+  #
+  # VolSync + Kopia handles off-cluster backup to NFS regardless — see
+  # infrastructure/storage/volsync/.
+  defaultClassReplicaCount: 2
+  defaultFsType: ext4
+  defaultDataLocality: best-effort
+  reclaimPolicy: Delete
+
+# The starter exposes the Longhorn UI via Gateway API instead of the
+# built-in Ingress. The HTTPRoute lives under
+# infrastructure/networking/gateway/httproute-longhorn.yaml — same
+# pattern architect used for argocd's HTTPRoute. Keep this off here.
+ingress:
+  enabled: false

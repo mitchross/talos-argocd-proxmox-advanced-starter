@@ -11,6 +11,12 @@ Thumbs.db
 # Helm
 charts/*/charts/
 charts/*.tgz
+# Kustomize-helm chart cache — kustomize pulls these into a sibling
+# `charts/` directory next to any kustomization.yaml that has a
+# `helmCharts:` block when rendered locally with `--enable-helm`.
+# Never commit; ArgoCD pulls fresh on its own. Same convention as the
+# source cluster's .gitignore.
+**/charts/
 
 # Kustomize cache
 kustomize-build-output.yaml

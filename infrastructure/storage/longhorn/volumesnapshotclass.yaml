@@ -1,0 +1,17 @@
+---
+# Default VolumeSnapshotClass for the cluster — referenced implicitly
+# by VolSync's ReplicationSource when no explicit className is set,
+# and by any tooling that takes CSI snapshots (e.g. velero, kasten).
+#
+# Naming note: kept as `longhorn` (not `longhorn-snapclass`) so demo
+# apps that hardcode `volumeSnapshotClassName: longhorn` work without
+# adapt-script changes.
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotClass
+metadata:
+  name: longhorn
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    snapshot.storage.kubernetes.io/is-default-class: "true"
+driver: driver.longhorn.io
+deletionPolicy: Delete

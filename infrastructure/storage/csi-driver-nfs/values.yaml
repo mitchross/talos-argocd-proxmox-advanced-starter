@@ -1,0 +1,23 @@
+# csi-driver-nfs Helm values.
+#
+# Provides a CSI driver for mounting NFS shares as PVs/PVCs. The
+# starter uses this for two things:
+#   1. The default `nfs` StorageClass in storage-class.yaml — for
+#      apps that prefer a network share over Longhorn block storage
+#      (e.g. media libraries, large read-mostly datasets).
+#   2. Static PV mounts (see commented pattern in storage-class.yaml)
+#      for pre-existing NFS directories that Kopia/VolSync needs to
+#      reach without dynamic provisioning.
+
+# Don't create the chart's bundled StorageClass — we ship our own
+# (storage-class.yaml) so we control the name and mount options
+# explicitly.
+storageClass:
+  create: false
+
+controller:
+  # NFS controller is a stateless reconciler. No need to schedule on
+  # control-plane nodes; let it run on workers like other infra
+  # components.
+  runOnControlPlane: false
+  runOnMaster: false
