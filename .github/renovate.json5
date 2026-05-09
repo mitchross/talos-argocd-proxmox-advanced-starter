@@ -1,0 +1,262 @@
+// Renovate configuration for the talos-argocd-proxmox-advanced-starter.
+//
+// This config is opinionated: it auto-merges minor + patch bumps for
+// helm-values, kubernetes, kustomize, and argocd managers. Major bumps
+// always require human review. The `automergeType: 'pr'` setting (NOT
+// 'branch') routes auto-merges through PRs so CI always runs and the
+// audit log is in PR descriptions — a 2026-05-08 lesson from the source
+// cluster: branch automerge bypasses the PR template + CI checks and
+// makes incident retrospectives much harder.
+//
+// Companion doc: ../docs/dockerhub-rate-limit-mitigation.md
+//   — covers the host_rules JSON pattern, the 200/6h authenticated
+//     free-tier ceiling, abortIgnoreStatusCodes, daily docker schedule,
+//     and the automergeType: pr rationale.
+//
+// Also see .claude/rules/always-pin-sha.md — every image ref in this
+// repo carries an @sha256:<digest>. Renovate keeps the digest current
+// alongside the tag bump in a single PR.
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: [
+    'config:recommended',
+  ],
+
+  // Cap concurrency. Three PRs at a time across the whole repo is plenty
+  // for a homelab; bumping this turns Renovate into a notification
+  // firehose during chart-release weeks.
+  prHourlyLimit: 3,
+
+  // Rate-limit + retry tuning for the docker datasource. abortOnError:
+  // false keeps Renovate going through transient registry errors;
+  // abortIgnoreStatusCodes: [429] tells it to keep going (instead of
+  // aborting) when Docker Hub rate-limits — the registry is throttling,
+  // not erroring, and the next scheduled run will catch up. See
+  // dockerhub-rate-limit-mitigation.md for the full rationale.
+  abortOnError: false,
+  abortIgnoreStatusCodes: [429],
+
+  // Stable identifier in PR titles + Dependency Dashboard. Default is
+  // fine but explicit is better.
+  dependencyDashboard: true,
+  dependencyDashboardTitle: 'Renovate Dependency Dashboard',
+
+  enabledManagers: [
+    'helm-values',
+    'kubernetes',
+    'kustomize',
+    'argocd',
+    'dockerfile',
+    'custom.regex',
+  ],
+
+  argocd: {
+    managerFilePatterns: [
+      '/^infrastructure/.+\\.yaml$/',
+      '/^apps/.+\\.yaml$/',
+      '/^monitoring/.+\\.yaml$/',
+    ],
+  },
+  kubernetes: {
+    managerFilePatterns: [
+      '/^infrastructure/.+\\.yaml$/',
+      '/^apps/.+\\.yaml$/',
+      '/^monitoring/.+\\.yaml$/',
+    ],
+  },
+  'helm-values': {
+    managerFilePatterns: [
+      '/^infrastructure/.+/values\\.yaml$/',
+      '/^monitoring/.+/values\\.yaml$/',
+      '/^apps/.+/values\\.yaml$/',
+    ],
+  },
+  kustomize: {
+    managerFilePatterns: [
+      '(^|/)kustomization\\.ya?ml$',
+    ],
+  },
+
+  packageRules: [
+    // ─────────────────────────────────────────────────────────────────
+    // Auto-merge policy: minor + patch yes, major no.
+    // ─────────────────────────────────────────────────────────────────
+    {
+      description: 'Auto-merge minor + patch bumps via PR (NOT branch). Branch automerge bypasses CI + PR audit trail.',
+      matchUpdateTypes: ['minor', 'patch'],
+      matchManagers: [
+        'helm-values',
+        'kubernetes',
+        'kustomize',
+        'argocd',
+      ],
+      automerge: true,
+      automergeType: 'pr',
+    },
+    {
+      description: 'Major bumps require human review — open the PR immediately so it shows up in the dashboard.',
+      matchUpdateTypes: ['major'],
+      matchManagers: [
+        'helm-values',
+        'kubernetes',
+        'kustomize',
+        'argocd',
+      ],
+      automerge: false,
+      prCreation: 'immediate',
+    },
+
+    // ─────────────────────────────────────────────────────────────────
+    // No major auto-merge for critical infrastructure charts.
+    // 2026-04-08 incident on the source cluster: a kube-prometheus-stack
+    // v82→v83 auto-merge caused a full cluster outage via Kyverno
+    // webhook deadlock. Pinning these to minor/patch only is non-
+    // negotiable. The CLAUDE.md DON'T list mirrors this rule.
+    // ─────────────────────────────────────────────────────────────────
+    {
+      description: 'No major auto-merge for kube-prometheus-stack — historic outage trigger.',
+      matchPackageNames: ['kube-prometheus-stack'],
+      matchUpdateTypes: ['major'],
+      automerge: false,
+      prCreation: 'immediate',
+    },
+    {
+      description: 'No major auto-merge for longhorn — storage layer, manual review every time.',
+      matchPackageNames: ['longhorn'],
+      matchUpdateTypes: ['major'],
+      automerge: false,
+      prCreation: 'immediate',
+    },
+    {
+      description: 'No major auto-merge for cilium — CNI, kernel-adjacent, manual review every time.',
+      matchPackageNames: ['cilium'],
+      matchUpdateTypes: ['major'],
+      automerge: false,
+      prCreation: 'immediate',
+    },
+
+    // ─────────────────────────────────────────────────────────────────
+    // Container digest updates. Enabled because every image ref in this
+    // repo carries an @sha256:<digest> (always-pin-sha rule). Renovate
+    // bumps the tag and the digest together in one PR.
+    // ─────────────────────────────────────────────────────────────────
+    {
+      description: 'Enable container digest updates — paired with always-pin-sha rule.',
+      matchDatasources: ['docker'],
+      matchUpdateTypes: ['digest'],
+      enabled: true,
+    },
+
+    // ─────────────────────────────────────────────────────────────────
+    // Docker Hub schedule — fetch only once a day to stay well under
+    // the 200/6h authenticated free-tier rate limit. See
+    // dockerhub-rate-limit-mitigation.md for the math.
+    // ─────────────────────────────────────────────────────────────────
+    {
+      description: 'Schedule Docker Hub lookups daily to avoid rate-limit blowouts.',
+      matchDatasources: ['docker'],
+      matchPackagePatterns: [
+        '^docker\\.io/',
+        // Bare names like "busybox", "nginx", "redis" — Renovate routes
+        // these to docker.io by default.
+        '^[a-z0-9_-]+(/[a-z0-9_-]+)?$',
+      ],
+      schedule: ['after 9am and before 5pm every weekday'],
+    },
+  ],
+
+  // ─────────────────────────────────────────────────────────────────
+  // hostRules — Docker Hub PAT (commented stub)
+  // ─────────────────────────────────────────────────────────────────
+  // Uncomment + populate to authenticate with Docker Hub and unlock the
+  // 200 pulls / 6h authenticated rate limit (anonymous = 100 / 6h).
+  // Requires a Docker Hub Personal Access Token (free) stored as a
+  // GitHub Actions secret named DOCKERHUB_PAT.
+  //
+  // hostRules: [
+  //   {
+  //     hostType: 'docker',
+  //     matchHost: 'docker.io',
+  //     username: 'YOUR_DOCKERHUB_USERNAME',
+  //     password: '{{ secrets.DOCKERHUB_PAT }}',
+  //   },
+  // ],
+
+  // ─────────────────────────────────────────────────────────────────
+  // STUB: in-cluster registry pagination workaround.
+  //
+  // If you run an in-cluster Gitea/Harbor/Forgejo registry that caps
+  // the docker registry tag pagination at n=1000 (Renovate's default
+  // is n=10000 → PAGINATION_NUMBER_INVALID), uncomment + adapt the
+  // customDatasources/customManagers blocks below. The pattern routes
+  // image lookups through a JSONata-coerced /v2/.../tags/list endpoint
+  // with n=1000.
+  //
+  // The kubernetes manager STILL extracts the deps from the YAML; the
+  // packageRule mutes the kubernetes-manager copy so you only get
+  // one PR per bump (the customManager + custom.<your-registry>
+  // datasource is the canonical path).
+  //
+  // customDatasources: {
+  //   'your-registry': {
+  //     defaultRegistryUrlTemplate: 'https://registry.example.com/v2/{{packageName}}/tags/list?n=1000',
+  //     format: 'json',
+  //     // Coerce single-tag results into a 1-element array (Zod
+  //     // expects array, JSONata returns object on single value).
+  //     transformTemplates: [
+  //       '{ "releases": [tags.{ "version": $ }] }',
+  //     ],
+  //   },
+  // },
+  // customManagers: [
+  //   {
+  //     description: 'in-cluster registry images — route through custom.your-registry to bypass pagination mismatch.',
+  //     customType: 'regex',
+  //     managerFilePatterns: [
+  //       '/^apps/.+\\.yaml$/',
+  //     ],
+  //     matchStrings: [
+  //       'image:\\s*registry\\.example\\.com/(?<packageName>[\\w._-]+):(?<currentValue>v[\\w.-]+)',
+  //     ],
+  //     depNameTemplate: 'registry.example.com/{{packageName}}',
+  //     datasourceTemplate: 'custom.your-registry',
+  //     versioningTemplate: 'semver-coerced',
+  //   },
+  // ],
+  // (and a packageRule with `enabled: false` for matchManagers:
+  // ['kubernetes'] + matchPackageNames: ['/^registry\\.example\\.com//']
+  // to avoid duplicate PRs.)
+
+  ignorePaths: [
+    // Helm chart caches inside infrastructure/**/charts/** are
+    // managed by `helm dependency update`, not Renovate.
+    '**/charts/**',
+  ],
+
+  customManagers: [
+    {
+      description: 'Omni cluster template - Talos version (regex extract)',
+      customType: 'regex',
+      managerFilePatterns: [
+        '/^omni/cluster-template/cluster-template\\.yaml$/',
+      ],
+      matchStrings: [
+        'talos:\\s*\\n\\s+version:\\s*(?<currentValue>v[0-9.]+)',
+      ],
+      depNameTemplate: 'ghcr.io/siderolabs/installer',
+      datasourceTemplate: 'docker',
+    },
+    {
+      description: 'Omni cluster template - Kubernetes version (regex extract)',
+      customType: 'regex',
+      managerFilePatterns: [
+        '/^omni/cluster-template/cluster-template\\.yaml$/',
+      ],
+      matchStrings: [
+        'kubernetes:\\s*\\n\\s+version:\\s*(?<currentValue>v[0-9.]+)',
+      ],
+      depNameTemplate: 'ghcr.io/siderolabs/kubelet',
+      datasourceTemplate: 'docker',
+    },
+  ],
+}

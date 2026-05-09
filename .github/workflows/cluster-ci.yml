@@ -1,0 +1,136 @@
+name: Cluster CI
+
+# Validates the GitOps repo on every PR and main push:
+#   1. ArgoCD application topology (no duplicate names, sync wave
+#      continuity, kustomization completeness)
+#   2. Kustomize render + Kubernetes schema validation (kubeconform)
+#   3. shellcheck on scripts/ (informational; doesn't block)
+#
+# Companion files:
+#   - scripts/validate-argocd-apps.sh — the topology check
+#   - .github/renovate.json5         — what bumps are auto-merged
+#   - docs/dockerhub-rate-limit-mitigation.md — why daily docker schedule
+
+on:
+  pull_request:
+    paths:
+      - infrastructure/**
+      - monitoring/**
+      - apps/**
+      - scripts/**
+      - .github/workflows/cluster-ci.yml
+  push:
+    branches:
+      - main
+    paths:
+      - infrastructure/**
+      - monitoring/**
+      - apps/**
+      - scripts/**
+      - .github/workflows/cluster-ci.yml
+
+permissions:
+  contents: read
+
+jobs:
+  argocd-structure:
+    name: ArgoCD Structure Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate ArgoCD app topology
+        run: bash ./scripts/validate-argocd-apps.sh
+
+  render-and-schema:
+    name: Kustomize Render and Schema Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Kustomize
+        uses: imranismail/setup-kustomize@v2
+        with:
+          kustomize-version: 5.4.2
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
+
+      - name: Install kubeconform
+        run: |
+          set -euo pipefail
+          KUBECONFORM_VERSION="v0.6.7"
+          curl -sSL -o /tmp/kubeconform.tar.gz "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz"
+          tar -xzf /tmp/kubeconform.tar.gz -C /tmp
+          sudo mv /tmp/kubeconform /usr/local/bin/kubeconform
+          kubeconform -v
+
+      - name: Render all kustomizations
+        run: |
+          set -euo pipefail
+          mapfile -t dirs < <(find infrastructure monitoring apps -type f -name kustomization.yaml -exec dirname {} \; | sort -u)
+
+          if [ "${#dirs[@]}" -eq 0 ]; then
+            echo "No kustomization directories found."
+            exit 1
+          fi
+
+          : > /tmp/all-manifests.yaml
+          for dir in "${dirs[@]}"; do
+            echo "Rendering ${dir}"
+            kustomize build "${dir}" --enable-helm >> /tmp/all-manifests.yaml
+            echo "---" >> /tmp/all-manifests.yaml
+          done
+
+      - name: Validate Kubernetes schemas
+        run: |
+          set -euo pipefail
+          # Filter known kubeconform false positives — VolSync
+          # ReplicationSource: Datree's CRD catalog schema is stale for
+          # the VolSync version this starter pins (perfectra1n fork) and
+          # rejects valid spec.kopia configs.
+          # Split multi-doc YAML into per-document files, skip those
+          # documents.
+          csplit -z -f /tmp/doc- /tmp/all-manifests.yaml '/^---$/' '{*}' > /dev/null
+          : > /tmp/filtered-manifests.yaml
+          for f in /tmp/doc-*; do
+            if grep -q 'apiVersion: volsync.backube/v1alpha1' "$f" && grep -q 'kind: ReplicationSource' "$f"; then
+              continue
+            fi
+            cat "$f" >> /tmp/filtered-manifests.yaml
+          done
+
+          kubeconform \
+            -summary \
+            -ignore-missing-schemas \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            /tmp/filtered-manifests.yaml
+
+  shellcheck:
+    name: Shell Script Lint (Informational)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+
+      - name: Run shellcheck on scripts
+        run: |
+          set -euo pipefail
+          # Only lint actual shell scripts; tolerate empty scripts/ dir.
+          if compgen -G "scripts/*.sh" > /dev/null; then
+            shellcheck -S warning scripts/*.sh
+          else
+            echo "No shell scripts to lint."
+          fi
