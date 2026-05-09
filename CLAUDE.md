@@ -31,6 +31,12 @@ starter — opinionated minimalism beats comprehensive.
 
 ## Critical rules (inherited from the source cluster)
 
+> **Three sub-rules in `.claude/rules/` extend this list with detailed
+> rationale and examples:**
+> - [`.claude/rules/always-pin-sha.md`](.claude/rules/always-pin-sha.md) — every image carries `@sha256:<digest>`
+> - [`.claude/rules/no-lua-in-argocd-cm.md`](.claude/rules/no-lua-in-argocd-cm.md) — four-bar test before Lua health checks
+> - [`.claude/rules/no-scripts-as-design.md`](.claude/rules/no-scripts-as-design.md) — `scripts/` is a tactical bridge, not a design surface
+
 ### DO:
 - Use directory structure for application discovery (no manual Application resources)
 - Sync waves on every infrastructure component — order is the architecture
@@ -38,6 +44,7 @@ starter — opinionated minimalism beats comprehensive.
 - Use Gateway API (not Ingress) — exclusively
 - List ALL YAML files in each directory's `kustomization.yaml` under `resources:` — unlisted files are never deployed
 - Pin Helm chart versions explicitly
+- Pin every image ref with `@sha256:<digest>` — see `.claude/rules/always-pin-sha.md`
 - Document every "advanced extension" as a separate doc, not inline
 
 ### DON'T:
@@ -46,6 +53,9 @@ starter — opinionated minimalism beats comprehensive.
 - Include proprietary or GPU-specific workloads in the default starter
 - Skip sync waves for "small" infrastructure components — cold-boot races bite later
 - Auto-merge major Helm chart bumps for critical infra (kube-prometheus-stack, longhorn, cilium)
+- Ship code that has `:latest` (or any tag without a `@sha256:<digest>`) in image references — see `.claude/rules/always-pin-sha.md`
+- Add custom Lua resource health checks in `argocd-cm` unless the four-bar test is met — see `.claude/rules/no-lua-in-argocd-cm.md`
+- Add new files to `scripts/` without a header comment explaining why this isn't a controller-managed / alert-managed concern — see `.claude/rules/no-scripts-as-design.md`
 
 ## Adaptation contract
 
