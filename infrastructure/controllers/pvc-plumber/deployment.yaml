@@ -1,14 +1,14 @@
 ---
-# pvc-plumber v2 operator — single Go binary running:
+# pvc-plumber v3.1.0 operator — single Go binary running:
 #   1. controller-runtime PVC reconciler (watches backup-labeled PVCs,
-#      ensures companion Secret/ReplicationSource/ReplicationDestination
+#      ensures companion ExternalSecret/ReplicationSource/ReplicationDestination
 #      resources exist)
-#   2. three admission webhooks on port 9443:
-#        - validate-pvc.pvc-plumber.io       (failurePolicy: Fail)
-#        - validate-pvc-exempt.pvc-plumber.io (failurePolicy: Ignore)
-#        - mutate-pvc.pvc-plumber.io         (failurePolicy: Fail)
-#        - mutate-job.pvc-plumber.io         (failurePolicy: Ignore)
-#      See webhooks.yaml for the full config and the asymmetry rationale.
+#   2. admission webhooks on port 9443 (see webhooks.yaml):
+#        - mutate-pvc.pvc-plumber.io           (failurePolicy: Fail)
+#        - validate-pvc.pvc-plumber.io         (failurePolicy: Fail)
+#        - validate-pvc-exempt.pvc-plumber.io  (failurePolicy: Ignore)
+#      The v2-era `mutate-job.pvc-plumber.io` webhook is GONE in v3.
+#      See webhooks.yaml header for the rationale.
 #   3. legacy /exists HTTP server on port 8080 (kept for backward compat
 #      with the v1 oracle pattern; not consumed in the starter).
 #
@@ -54,9 +54,52 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       containers:
+      # ─────────────────────────────────────────────────────────────────
+      # v2 → v3.0 → v3.1 transition rationale (read this before bumping)
+      #
+      # v2.x  — Kopia repo lived on an NFS share. The operator mutated
+      #         VolSync mover Jobs at admission time to inject the NFS
+      #         volume + mount. That JobMutator collided with VolSync's
+      #         CreateOrUpdateDeleteOnImmutableErr reconciler and caused
+      #         a cluster-wide backup outage on 2026-05-08. The v2
+      #         deployment carried NFS_SERVER / NFS_PATH /
+      #         KOPIA_REPOSITORY_PATH env vars and a /repository volume
+      #         mount.
+      #
+      # v3.0  — Switched the Kopia backend from NFS-filesystem to S3.
+      #         Mover Jobs need no shared volume in the S3 shape, so
+      #         the JobMutator webhook is gone forever. Operator pod
+      #         reads KOPIA_PASSWORD / AWS_ACCESS_KEY_ID /
+      #         AWS_SECRET_ACCESS_KEY via secretKeyRef env vars.
+      #
+      # v3.0 ES-race bug — when ArgoCD syncs the ExternalSecret manifest
+      #         in the same wave that this Deployment rolls, kubelet's
+      #         secretKeyRef resolver can race the ESO render and the
+      #         pod enters CreateContainerConfigError → CrashLoopBackOff.
+      #         With `failurePolicy: Fail` on the validating webhook,
+      #         that crash-loop denies every backup-labeled PVC creation
+      #         cluster-wide. The 2026-05-08 cutover incident was this
+      #         exact race.
+      #
+      # v3.1  — Operator no longer reads creds from env vars at pod
+      #         start. The same `pvc-plumber-kopia` Secret is mounted as
+      #         a directory at /var/secret/pvc-plumber-kopia (each Secret
+      #         key becomes a file). The Kopia client reads creds from
+      #         disk on each subprocess invocation rather than relying
+      #         on env-var resolution at pod start, so the pod starts
+      #         cleanly regardless of ESO render state. A Secret update
+      #         from ESO is observed on the next kopia call without a
+      #         pod restart.
+      #
+      # Per-PVC volsync-<pvc> Secrets the reconciler renders for VolSync
+      # mover Jobs are NOT touched — those continue to use secretKeyRef
+      # env vars and are not subject to the ArgoCD sync race because
+      # they are operator-rendered, not Argo-rendered.
+      # ─────────────────────────────────────────────────────────────────
       - name: pvc-plumber
-        # Pinned operator image. Renovate will track this in Phase 2j.
-        image: ghcr.io/mitchross/pvc-plumber:2.1.0
+        # SHA digest pin (always-pin-sha rule, see .claude/rules/).
+        # Renovate tracks the tag; the digest moves with the tag.
+        image: ghcr.io/mitchross/pvc-plumber:3.1.0@sha256:456f062a884bce71557c28b241e1b342426d885afd30b3172924f1a6d3e0cf1a
         ports:
         - name: http
           containerPort: 8080
@@ -66,9 +109,33 @@ spec:
           protocol: TCP
         env:
         - name: BACKEND_TYPE
-          value: "kopia-fs"
-        - name: KOPIA_REPOSITORY_PATH
-          value: "/repository"
+          value: "kopia-s3"
+        # ─────────────────────────────────────────────────────────────
+        # PLACEHOLDER — replace before bootstrap completes.
+        #
+        # The S3 endpoint where Kopia stores PVC backups. The starter
+        # ships an in-cluster MinIO under apps/postgres-demo/minio for
+        # the postgres-demo (Barman → MinIO bucket cnpg-backups). For
+        # production Kopia/PVC backups, point at a separate S3 endpoint
+        # (RustFS, MinIO, AWS S3, Backblaze B2, etc.) — sharing the
+        # same bucket between Barman and Kopia is allowed but mixes
+        # retention policies and audit trails.
+        #
+        # Substitution: scripts/adapt-to-your-cluster.sh replaces
+        # the placeholder when you bootstrap. Format MUST be bare
+        # `host:port` — Kopia rejects fully-qualified URLs with
+        # "Endpoint url cannot have fully qualified paths". Use
+        # KOPIA_S3_DISABLE_TLS below to select HTTP vs HTTPS.
+        # ─────────────────────────────────────────────────────────────
+        - name: KOPIA_S3_ENDPOINT
+          value: "<YOUR_S3_ENDPOINT>:<PORT>"
+        - name: KOPIA_S3_BUCKET
+          value: "volsync-kopia"
+        - name: KOPIA_S3_DISABLE_TLS
+          # "true" for plaintext HTTP (typical in-cluster MinIO/RustFS
+          # without TLS termination). Flip to "false" if your S3 endpoint
+          # is fronted with TLS.
+          value: "true"
         - name: LOG_LEVEL
           value: "info"
         - name: CACHE_TTL
@@ -77,14 +144,18 @@ spec:
           value: "7s"
         - name: RE_WARM_INTERVAL
           value: "90s"
-        - name: KOPIA_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              # Created by the sealed-secrets controller unwrapping
-              # sealed-kopia-password.yaml. See that file's header for
-              # the seal-secret.sh workflow.
-              name: pvc-plumber-kopia
-              key: KOPIA_PASSWORD
+        # Kopia repo password + S3 admin keys come from the same
+        # `pvc-plumber-kopia` Secret rendered by ExternalSecret (see
+        # externalsecret.yaml). v3.1.0 mounts that Secret as a directory
+        # under /var/secret/pvc-plumber-kopia (see volumeMounts below)
+        # and reads creds from disk on each kopia subprocess invocation,
+        # avoiding the pod-startup secretKeyRef race that crashed v3.0.0
+        # during ArgoCD sync waves. Mover Jobs still consume the per-PVC
+        # volsync-<pvc> Secret via secretKeyRef — those are operator-
+        # rendered, not Argo-rendered, and aren't subject to the same
+        # race. Operators rolling back to ≤3.0.0 must restore the three
+        # secretKeyRef env vars (KOPIA_PASSWORD, AWS_ACCESS_KEY_ID,
+        # AWS_SECRET_ACCESS_KEY) and remove the lazy-creds volume mount.
         - name: KOPIA_CONFIG_PATH
           value: "/tmp/kopia/config/repository.config"
         - name: KOPIA_LOG_DIR
@@ -95,35 +166,29 @@ spec:
           value: "/tmp"
         - name: USER
           value: "plumber"
-        # Operator-mode configuration. The v2 binary uses these to enable
+        # Operator-mode configuration. The v3 binary uses these to enable
         # the controller-runtime manager + admission webhooks alongside
-        # the legacy /exists HTTP server.
+        # the existing /exists HTTP server.
         - name: OPERATOR_MODE
           value: "true"
-        - name: NFS_SERVER
-          value: "__REPLACE_ME_NFS_SERVER__"
-        - name: NFS_PATH
-          value: "__REPLACE_ME_NFS_PATH__"
         # Namespaces the operator must NOT touch when reconciling/mutating.
         # Mirrors the webhook namespaceSelector exclusion list (see
         # webhooks.yaml). Keep them in sync — divergence between admission
         # and reconciler views of "what is infrastructure" is a footgun.
         #
-        # Starter list (8 namespaces) — infrastructure surfaces in this
-        # repo where backup-labeled PVCs would deadlock if pvc-plumber's
-        # webhook fails closed:
-        #   kube-system / volsync-system / argocd / longhorn-system /
-        #   snapshot-controller / cert-manager / sealed-secrets /
-        #   external-secrets
-        # Differs from the source cluster (which has 9, including
-        # `kyverno` as a defensive forward-compat marker and
-        # `1passwordconnect` for the source's paid-service backend).
-        # The starter drops kyverno (never been here, marker would
-        # mislead readers) and 1passwordconnect (no paid services in
-        # default), and adds sealed-secrets (the starter's secret
-        # backend that didn't exist in source).
+        # Starter list:
+        #   kube-system / volsync-system / kyverno / argocd /
+        #   longhorn-system / snapshot-controller / cert-manager /
+        #   sealed-secrets / external-secrets
+        #
+        # `kyverno` is kept as a defensive forward-compat marker —
+        # Kyverno isn't installed in this starter, but if a user adds it
+        # later the exclusion is already in place. The 2026-04-08
+        # incident on the source cluster was a Kyverno crash with
+        # webhook-failurePolicy=Fail causing full cluster deadlock; the
+        # marker prevents repeating that mistake here.
         - name: SYSTEM_NAMESPACES
-          value: "kube-system,volsync-system,argocd,longhorn-system,snapshot-controller,cert-manager,sealed-secrets,external-secrets"
+          value: "kube-system,volsync-system,kyverno,argocd,longhorn-system,snapshot-controller,cert-manager,sealed-secrets,external-secrets"
         securityContext:
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: false
@@ -146,6 +211,14 @@ spec:
           timeoutSeconds: 5
           failureThreshold: 3
         readinessProbe:
+          # v3.1 upgraded /readyz to validate the kopia connection (5s
+          # cap) — pod is Ready: false until kopia is genuinely usable,
+          # even though it's Running. Kubelet doesn't route admission
+          # webhook traffic to a not-Ready pod, so a half-initialized
+          # operator can't deny PVC creates. Side effect worth knowing:
+          # pods will flap Ready/NotReady during transient S3 outages.
+          # That's the intended signal — failurePolicy: Fail webhooks
+          # stop receiving traffic from a pod that can't reach kopia.
           httpGet:
             path: /readyz
             port: http
@@ -154,9 +227,6 @@ spec:
           timeoutSeconds: 15
           failureThreshold: 3
         volumeMounts:
-        - name: repository
-          mountPath: /repository
-          readOnly: false
         - name: kopia-tmp
           mountPath: /tmp/kopia
         # controller-runtime default location for webhook serving cert.
@@ -165,16 +235,27 @@ spec:
         - name: webhook-tls
           mountPath: /tmp/k8s-webhook-server/serving-certs
           readOnly: true
+        # v3.1.0 lazy-credentials mount. The pvc-plumber-kopia Secret's
+        # three keys (KOPIA_PASSWORD, AWS_ACCESS_KEY_ID,
+        # AWS_SECRET_ACCESS_KEY) are exposed as files at this path. The
+        # operator reads them on each kopia subprocess invocation and
+        # retries with backoff if any file is missing/empty (ESO not done
+        # rendering yet).
+        - name: kopia-credentials
+          mountPath: /var/secret/pvc-plumber-kopia
+          readOnly: true
       volumes:
-      - name: repository
-        nfs:
-          server: __REPLACE_ME_NFS_SERVER__
-          path: __REPLACE_ME_NFS_PATH__
       - name: kopia-tmp
         emptyDir: {}
       - name: webhook-tls
         secret:
           secretName: pvc-plumber-webhook-tls
+      - name: kopia-credentials
+        secret:
+          secretName: pvc-plumber-kopia
+          # 0440 = readable by the pvc-plumber container's UID/GID (568)
+          # and the runtime's group; nothing else.
+          defaultMode: 0440
 ---
 apiVersion: v1
 kind: Service
@@ -192,8 +273,8 @@ spec:
   ports:
   # `name: http` and `name: webhook` are mandatory for HTTPRoute
   # compatibility, even though pvc-plumber itself doesn't expose an
-  # HTTPRoute — keeping the convention so unnamed-port silently-fail bugs
-  # never leak into the cluster.
+  # HTTPRoute — keeping the convention so unnamed-port silently-fail
+  # bugs never leak into the cluster.
   - name: http
     port: 80
     targetPort: http
