@@ -6,8 +6,8 @@
 # if available — the disk_* tunables below are set up to take advantage
 # of either.
 #
-# When you scale to a 3-CP HA cluster (see docs/extending/scaling-to-ha.md),
-# bump memory to 16000 — the bigger etcd quorum benefits from headroom.
+# When you scale to a 3-CP HA cluster, bump memory to 16000 — the
+# bigger etcd quorum benefits from headroom.
 #
 # storage_selector uses CEL — see the upstream README for the full grammar:
 #   https://github.com/siderolabs/omni-infra-provider-proxmox

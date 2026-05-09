@@ -82,9 +82,9 @@ The condensed deep-dive lives in [`docs/pvc-plumber-explained.md`](docs/pvc-plum
 ## Quick start
 
 > **Prerequisites**: Proxmox VE host with ≥64GB RAM, ≥600GB storage,
-> network access to GitHub. To upgrade to a 3 CP + N worker HA cluster
-> after the starter is up, see
-> [`docs/extending/scaling-to-ha.md`](docs/extending/scaling-to-ha.md).
+> network access to GitHub. The starter ships with a 1 CP + 2 worker
+> default; scaling to 3 CP HA is a `cluster-template.yaml` count
+> change followed by a fresh `omni/bootstrap.sh` apply.
 
 ```bash
 # 1. Clone the starter (your fork, not the upstream — you'll commit
@@ -292,7 +292,6 @@ Light, fast, good shorts material. No live demo; just walk the config.
 - [`docs/dockerhub-rate-limit-mitigation.md`](docs/dockerhub-rate-limit-mitigation.md) — Renovate + Docker Hub free-tier
 - [`docs/secret-management.md`](docs/secret-management.md) — sealed-secrets default, swapping to other backends
 - [`docs/adapting-to-your-cluster.md`](docs/adapting-to-your-cluster.md) — what to edit before you boot
-- [`docs/extending.md`](docs/extending.md) — adding GPU support, swapping DNS providers, adding apps
 
 ---
 

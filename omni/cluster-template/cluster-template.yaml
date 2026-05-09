@@ -4,7 +4,8 @@
 # Cluster spec for the starter homelab cluster: 1 control plane + 2 workers,
 # no GPU node, no Cloudflare integration. Total footprint ~56 GB RAM /
 # 20 vCPU — fits on a single 64GB Proxmox host. To upgrade to 3 CP +
-# N workers HA, see docs/extending/scaling-to-ha.md.
+# N workers HA, bump `cluster.controlplanes` count to 3 and re-run
+# `omnictl cluster template sync` against this file.
 #
 # Why a single CP? This is a starter, not a production cluster. A single
 # CP is fine for learning and for the demos in this repo. ArgoCD,
