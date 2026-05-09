@@ -193,7 +193,7 @@ pvc-plumber's reconciler also does **cleanup** — when a backup-labeled PVC is 
 | **pvc-plumber** | Decides whether to inject `dataSourceRef`. Creates ES/RS/RD per backup-labeled PVC. | `volsync-system` namespace |
 | **VolSync** | Runs the actual backup Jobs on schedule. Handles populate-from-kopia on restore. | `volsync-system` namespace, fork: `ghcr.io/perfectra1n/volsync` |
 | **kopia** | The backup format itself. Content-addressed, deduplicated, encrypted client-side. | Inside the VolSync mover Job's container |
-| **Your S3** | Where the kopia repo blobs live. Could be in-cluster MinIO, RustFS, AWS S3, Backblaze B2, MinIO on TrueNAS — anything S3-API-compatible. | `<YOUR_S3_ENDPOINT>:<PORT>`, bucket `volsync-kopia` |
+| **Your S3** | Where the kopia repo blobs live. Could be in-cluster MinIO, RustFS, AWS S3, Backblaze B2, MinIO on TrueNAS — anything S3-API-compatible. | `__REPLACE_ME_S3_ENDPOINT__:__REPLACE_ME_S3_PORT__`, bucket `volsync-kopia` |
 | **ESO + secret-store** | Pulls the kopia password + S3 creds from your backend (sealed-secrets default in this starter; swap to 1Password Connect / Vault / AWS SM / etc). | `external-secrets`, `sealed-secrets` namespaces |
 | **cert-manager** | Issues TLS certs for pvc-plumber's webhooks (port 9443). | `cert-manager` namespace |
 | **Longhorn** | The storage class your PVCs actually live on. CSI snapshots are how VolSync grabs a consistent point-in-time copy without freezing the app. | `longhorn-system` namespace |

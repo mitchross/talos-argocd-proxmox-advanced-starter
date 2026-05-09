@@ -134,6 +134,20 @@
       automerge: false,
       prCreation: 'immediate',
     },
+    {
+      description: 'CNPG postgres image — minor/patch + digest only. Major postgres bump triggers pg_upgrade and is human-only.',
+      matchPackageNames: ['ghcr.io/cloudnative-pg/postgresql'],
+      matchUpdateTypes: ['major'],
+      automerge: false,
+      prCreation: 'immediate',
+    },
+    {
+      description: 'CNPG postgres image — auto-merge minor/patch + digest via PR. Paired with the customManager that picks up spec.imageName.',
+      matchPackageNames: ['ghcr.io/cloudnative-pg/postgresql'],
+      matchUpdateTypes: ['minor', 'patch', 'digest'],
+      automerge: true,
+      automergeType: 'pr',
+    },
 
     // ─────────────────────────────────────────────────────────────────
     // Container digest updates. Enabled because every image ref in this
@@ -256,6 +270,33 @@
         'kubernetes:\\s*\\n\\s+version:\\s*(?<currentValue>v[0-9.]+)',
       ],
       depNameTemplate: 'ghcr.io/siderolabs/kubelet',
+      datasourceTemplate: 'docker',
+    },
+
+    // ─────────────────────────────────────────────────────────────────
+    // CNPG Cluster CRD — image lives in `spec.imageName`, not the
+    // standard k8s `image:` field. The default `kubernetes` manager
+    // pattern keys on `image:` lines and silently skips imageName, so
+    // the postgres-demo Cluster manifest would never get a Renovate
+    // PR for postgresql tag/digest bumps without this customManager.
+    //
+    // Pattern matches:
+    //   imageName: ghcr.io/cloudnative-pg/postgresql:17.6@sha256:abcd...
+    // and feeds tag + digest to the docker datasource. Update PRs are
+    // gated to minor/patch + digest by the package rule below
+    // (cloudnative-pg ships a major every couple years; major
+    // postgres bumps require human review of pg_upgrade implications).
+    // ─────────────────────────────────────────────────────────────────
+    {
+      description: 'CNPG postgresql image (spec.imageName, not standard image:)',
+      customType: 'regex',
+      managerFilePatterns: [
+        '/^apps/.+/cluster\\.yaml$/',
+        '/^infrastructure/.+/cluster\\.yaml$/',
+      ],
+      matchStrings: [
+        'imageName:\\s*(?<depName>[^\\s:@]+):(?<currentValue>[^@\\s]+)(@(?<currentDigest>sha256:[a-f0-9]+))?',
+      ],
       datasourceTemplate: 'docker',
     },
   ],

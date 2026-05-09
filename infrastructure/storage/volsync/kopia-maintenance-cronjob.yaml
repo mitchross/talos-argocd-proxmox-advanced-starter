@@ -11,10 +11,24 @@
 # with hourly backup jobs). Quick maintenance runs every day; Kopia
 # internally schedules full maintenance weekly per the policy below.
 #
-# Sourcing the password: `Secret/kopia-maintenance` is templated by
-# the ExternalSecret in `externalsecret.yaml` (same directory). That
-# ExternalSecret pulls from the cluster's ESO ClusterSecretStore —
-# see externalsecret.yaml's header for the full secret-flow rationale.
+# Backend: S3 (kopia v3.1.0 alignment with the pvc-plumber operator).
+# Pre-v3.0 the repo lived on an NFS share and this CronJob mounted it
+# via a legacy `nfs:` volume + `kopia repository connect filesystem`.
+# v3.0 cut over to S3 — mover Jobs need no shared volume, JobMutator
+# is gone, and this maintenance Job connects via `kopia repository
+# connect s3` against the same bucket the operator uses.
+#
+# Sourcing the password + S3 creds: `Secret/pvc-plumber-kopia` is
+# rendered by the ExternalSecret in the pvc-plumber directory (see
+# `infrastructure/controllers/pvc-plumber/externalsecret.yaml`). Its
+# three keys (KOPIA_PASSWORD, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
+# are mounted as files at /var/secret/pvc-plumber-kopia and read at
+# runtime — same lazy-credentials pattern the v3.1.0 operator uses
+# (CHANGELOG [3.1.0]). This CronJob doesn't strictly need the lazy
+# pattern (a once-a-day Job doesn't race ArgoCD startup the way the
+# operator pod did), but mirroring the operator's mount layout keeps
+# the Secret-shape contract single-sourced — operators reading either
+# manifest see the same three files in the same path.
 ---
 apiVersion: batch/v1
 kind: CronJob
@@ -65,13 +79,27 @@ spec:
               image: kopia/kopia:0.22.3@sha256:4dcc208c1b191770bf4d0854f8deec06b4a16b35be4b63abdcfa9755cee7960e
               imagePullPolicy: IfNotPresent
               env:
-                - name: KOPIA_PASSWORD
-                  valueFrom:
-                    secretKeyRef:
-                      # Templated by the ExternalSecret in
-                      # ./externalsecret.yaml.
-                      name: kopia-maintenance
-                      key: KOPIA_PASSWORD
+                # ─────────────────────────────────────────────────────
+                # PLACEHOLDER — replace before bootstrap completes.
+                #
+                # Same S3 endpoint + bucket as the pvc-plumber
+                # operator's deployment (deployment.yaml in
+                # ../../controllers/pvc-plumber/). The maintenance Job
+                # connects to the same Kopia repo blobs the mover Jobs
+                # write to. scripts/adapt-to-your-cluster.sh substitutes
+                # the `__REPLACE_ME_*__` tokens at adoption time.
+                # ─────────────────────────────────────────────────────
+                - name: KOPIA_S3_ENDPOINT
+                  value: "__REPLACE_ME_S3_ENDPOINT__:__REPLACE_ME_S3_PORT__"
+                - name: KOPIA_S3_BUCKET
+                  # Default bucket name — must match the operator's
+                  # KOPIA_S3_BUCKET in deployment.yaml.
+                  value: "volsync-kopia"
+                - name: KOPIA_S3_DISABLE_TLS
+                  # "true" for plaintext HTTP (typical in-cluster
+                  # MinIO/RustFS without TLS termination). Flip to
+                  # "false" if your S3 endpoint is fronted with TLS.
+                  value: "true"
                 # Stable synthetic identity — independent of pod
                 # name / VolSync mover churn. Kopia records
                 # `<username>@<hostname>` in repo config as the
@@ -114,17 +142,42 @@ spec:
                   cpu: "2"
                   # 4Gi: `kopia maintenance run --full` loads blob
                   # indexes into memory. 2Gi was enough for small
-                  # repos but the Kopia NFS share grows over time
-                  # and the job can OOM silently before printing
-                  # anything useful. 4Gi gives headroom.
+                  # repos but the kopia repo can grow over time and
+                  # the job can OOM silently before printing anything
+                  # useful. 4Gi gives headroom.
                   memory: 4Gi
               command:
                 - /bin/sh
                 - -c
                 - |
                   set -eu
-                  echo "=== Connecting to Kopia repository ==="
-                  # Kopia 0.20 ignores KOPIA_OVERRIDE_HOSTNAME env —
+                  # Read credentials lazily from the mounted Secret
+                  # directory. The operator deployment uses the same
+                  # mount path; keeping this CronJob in sync means a
+                  # `kubectl describe secret pvc-plumber-kopia -n
+                  # volsync-system` is the single source of truth for
+                  # what the maintenance pipeline expects.
+                  CREDS_DIR=/var/secret/pvc-plumber-kopia
+                  if [ ! -s "$CREDS_DIR/KOPIA_PASSWORD" ] || \
+                     [ ! -s "$CREDS_DIR/AWS_ACCESS_KEY_ID" ] || \
+                     [ ! -s "$CREDS_DIR/AWS_SECRET_ACCESS_KEY" ]; then
+                    echo "ERROR: Secret/pvc-plumber-kopia not fully populated."
+                    echo "  Expected files in $CREDS_DIR:"
+                    echo "    - KOPIA_PASSWORD"
+                    echo "    - AWS_ACCESS_KEY_ID"
+                    echo "    - AWS_SECRET_ACCESS_KEY"
+                    echo "  Confirm ESO has rendered the Secret and"
+                    echo "  the SealedSecret-unwrapped 'rustfs' Secret"
+                    echo "  in volsync-system has all three properties."
+                    exit 1
+                  fi
+                  KOPIA_PASSWORD="$(cat "$CREDS_DIR/KOPIA_PASSWORD")"
+                  AWS_ACCESS_KEY_ID="$(cat "$CREDS_DIR/AWS_ACCESS_KEY_ID")"
+                  AWS_SECRET_ACCESS_KEY="$(cat "$CREDS_DIR/AWS_SECRET_ACCESS_KEY")"
+                  export KOPIA_PASSWORD AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+
+                  echo "=== Connecting to Kopia repository (S3) ==="
+                  # Kopia 0.20+ ignores KOPIA_OVERRIDE_HOSTNAME env —
                   # only the `--override-hostname` flag on
                   # `repository connect` actually sets the client
                   # identity. Without it, the pod hostname is used
@@ -134,8 +187,14 @@ spec:
                   # because the owner stored on the repo
                   # (maintenance@cluster) doesn't match the client
                   # identity (maintenance@<pod-name>).
-                  kopia repository connect filesystem \
-                    --path=/repository \
+                  #
+                  # `--disable-tls` aligns with the operator's
+                  # KOPIA_S3_DISABLE_TLS=true. Flip BOTH together if
+                  # your S3 endpoint moves behind TLS termination.
+                  kopia repository connect s3 \
+                    --endpoint="$KOPIA_S3_ENDPOINT" \
+                    --bucket="$KOPIA_S3_BUCKET" \
+                    --disable-tls \
                     --password="$KOPIA_PASSWORD" \
                     --override-hostname=cluster \
                     --override-username=maintenance
@@ -170,17 +229,22 @@ spec:
 
                   echo "=== Done ==="
               volumeMounts:
-                - name: repository
-                  mountPath: /repository
+                - name: kopia-credentials
+                  mountPath: /var/secret/pvc-plumber-kopia
+                  readOnly: true
                 - name: kopia-tmp
                   mountPath: /tmp/kopia
           volumes:
-            - name: repository
-              # NFS endpoint substituted by scripts/adapt-to-your-cluster.sh.
-              # Same placeholders pvc-plumber's deployment.yaml uses, so
-              # the adapt script substitutes both consistently.
-              nfs:
-                server: __REPLACE_ME_NFS_SERVER__
-                path: __REPLACE_ME_NFS_PATH__
+            # Lazy-credentials mount — same pattern as the operator
+            # Deployment in ../../controllers/pvc-plumber/. The
+            # `pvc-plumber-kopia` Secret's three keys
+            # (KOPIA_PASSWORD, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
+            # are exposed as files at /var/secret/pvc-plumber-kopia.
+            - name: kopia-credentials
+              secret:
+                secretName: pvc-plumber-kopia
+                # 0440 = readable by the kopia container's UID/GID
+                # (568) and the runtime's group; nothing else.
+                defaultMode: 0440
             - name: kopia-tmp
               emptyDir: {}

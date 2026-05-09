@@ -121,15 +121,18 @@ spec:
         # same bucket between Barman and Kopia is allowed but mixes
         # retention policies and audit trails.
         #
-        # Substitution: scripts/adapt-to-your-cluster.sh replaces
-        # the placeholder when you bootstrap. Format MUST be bare
-        # `host:port` — Kopia rejects fully-qualified URLs with
+        # Substitution: scripts/adapt-to-your-cluster.sh replaces the
+        # `__REPLACE_ME_*__` tokens at adoption time. Format MUST be
+        # bare `host:port` — Kopia rejects fully-qualified URLs with
         # "Endpoint url cannot have fully qualified paths". Use
         # KOPIA_S3_DISABLE_TLS below to select HTTP vs HTTPS.
         # ─────────────────────────────────────────────────────────────
         - name: KOPIA_S3_ENDPOINT
-          value: "<YOUR_S3_ENDPOINT>:<PORT>"
+          value: "__REPLACE_ME_S3_ENDPOINT__:__REPLACE_ME_S3_PORT__"
         - name: KOPIA_S3_BUCKET
+          # Default bucket name — change to whatever you create in your
+          # S3 backend before first sync. The starter convention is
+          # `volsync-kopia`; nothing in the operator binary cares.
           value: "volsync-kopia"
         - name: KOPIA_S3_DISABLE_TLS
           # "true" for plaintext HTTP (typical in-cluster MinIO/RustFS

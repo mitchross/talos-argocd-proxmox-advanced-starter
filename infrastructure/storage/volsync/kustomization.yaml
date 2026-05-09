@@ -4,10 +4,18 @@ namespace: volsync-system
 
 # All resources in this directory must be listed below — kustomize
 # silently ignores files not declared here, and ArgoCD won't notice.
+#
+# Note: there's no standalone ExternalSecret for kopia maintenance —
+# the kopia-maintenance CronJob (kopia-maintenance-cronjob.yaml) reads
+# directly from `Secret/pvc-plumber-kopia` in volsync-system (rendered
+# by the ExternalSecret in `infrastructure/controllers/pvc-plumber/`).
+# Pre-v3.1 the maintenance Job used its own ExternalSecret + Secret;
+# the v3.1 lazy-credentials cutover means both the operator pod and
+# the maintenance Job consume the same three-key Secret, which keeps
+# the credential surface auditable in one place.
 resources:
   - namespace.yaml
   - volumesnapshotclass.yaml
-  - externalsecret.yaml
   - kopia-maintenance-cronjob.yaml
 
 helmCharts:
