@@ -36,8 +36,9 @@ spec:
 
   # Pin to a recent stable Postgres major. CNPG bumps Postgres minor/
   # patch independently of the operator chart — this image tag tracks
-  # both.
-  imageName: ghcr.io/cloudnative-pg/postgresql:17.6
+  # both. SHA digest pin (always-pin-sha rule, see .claude/rules/).
+  # Renovate tracks tag + digest in lockstep.
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.6@sha256:30b304a2e300ed80b6d1b740e4369e9b0f25599fb518de78c01fd9f25531791b
 
   resources:
     requests:

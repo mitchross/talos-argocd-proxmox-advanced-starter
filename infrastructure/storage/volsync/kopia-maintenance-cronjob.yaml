@@ -58,10 +58,11 @@ spec:
               type: RuntimeDefault
           containers:
             - name: kopia
-              # Pin to a specific Kopia version — Renovate will track
-              # this in Phase 2j. Must be compatible with VolSync
-              # mover's Kopia version (VolSync 0.18.x ships kopia ~0.20).
-              image: kopia/kopia:0.22.3
+              # Pin to a specific Kopia version. Must be compatible with
+              # VolSync mover's Kopia version (VolSync 0.18.x ships
+              # kopia ~0.20). SHA digest pin (always-pin-sha rule, see
+              # .claude/rules/). Renovate tracks tag + digest in lockstep.
+              image: kopia/kopia:0.22.3@sha256:4dcc208c1b191770bf4d0854f8deec06b4a16b35be4b63abdcfa9755cee7960e
               imagePullPolicy: IfNotPresent
               env:
                 - name: KOPIA_PASSWORD

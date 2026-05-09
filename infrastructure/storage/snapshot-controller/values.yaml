@@ -12,6 +12,11 @@ replicaCount: 2
 image:
   repository: registry.k8s.io/sig-storage/snapshot-controller
   tag: v8.5.0
+# SHA digest pin lives in the Kustomize `images:` block in
+# kustomization.yaml (always-pin-sha rule, see .claude/rules/). The
+# Piraeus snapshot-controller chart's image schema doesn't expose a
+# `digest:` field, so it has to ride on Kustomize's image transformer.
+# Renovate tracks tag + digest in lockstep there.
 
 # Spread the two replicas across nodes when possible.
 affinity:

@@ -20,3 +20,15 @@ helmCharts:
     namespace: volsync-system
     valuesFile: values.yaml
     includeCRDs: true
+
+# SHA digest pin (always-pin-sha rule, see .claude/rules/).
+# The chart's image: struct doesn't expose `digest:`, so the digest
+# rides on the Kustomize image transformer here. Renovate tracks tag +
+# digest in lockstep. The transformer matches the controller and all
+# mover variants (kopia/rclone/restic/rsync/rsync-tls/syncthing) since
+# they all reference the same repository in values.yaml.
+images:
+  - name: ghcr.io/perfectra1n/volsync
+    newName: ghcr.io/perfectra1n/volsync
+    newTag: v0.17.11
+    digest: sha256:79674d3c48685e21cadaac8e0afd14268130a0a51a10c41a9dd65096c1434a0f

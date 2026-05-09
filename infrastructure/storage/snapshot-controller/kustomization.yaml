@@ -17,3 +17,20 @@ helmCharts:
     namespace: snapshot-controller
     valuesFile: values.yaml
     includeCRDs: true
+
+# SHA digest pin (always-pin-sha rule, see .claude/rules/).
+# The chart's values.yaml only exposes repository + tag; the digest
+# rides on the Kustomize image transformer here. Renovate tracks tag +
+# digest in lockstep.
+images:
+  - name: registry.k8s.io/sig-storage/snapshot-controller
+    newName: registry.k8s.io/sig-storage/snapshot-controller
+    newTag: v8.5.0
+    digest: sha256:74ca61ab13e978f03cf0f336a607281d15f04cda0a38a881306365473b28a3d8
+  # The Piraeus chart also renders a snapshot-conversion-webhook image
+  # (the chart hosts it themselves because it's not exposed upstream).
+  # Pinned for the same always-pin-sha reasons.
+  - name: ghcr.io/piraeusdatastore/snapshot-conversion-webhook
+    newName: ghcr.io/piraeusdatastore/snapshot-conversion-webhook
+    newTag: v8.5.0
+    digest: sha256:74e6dc775de8b4d74f2d5f5d221b6a5d9d296bfda10e393a0349d1a2f9b1b347
