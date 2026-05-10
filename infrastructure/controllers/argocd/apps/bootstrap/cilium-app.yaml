@@ -10,6 +10,7 @@ metadata:
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "0"
+    argocd.argoproj.io/manifest-generate-paths: infrastructure/networking/cilium
   labels:
     app.kubernetes.io/part-of: infrastructure
 spec:

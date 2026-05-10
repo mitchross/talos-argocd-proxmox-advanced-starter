@@ -32,6 +32,7 @@ metadata:
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "3"
+    argocd.argoproj.io/manifest-generate-paths: infrastructure/database/cnpg-barman-plugin
   labels:
     app.kubernetes.io/part-of: infrastructure
 spec:

@@ -29,6 +29,7 @@ metadata:
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/manifest-generate-paths: infrastructure/controllers/pvc-plumber
   labels:
     app.kubernetes.io/part-of: infrastructure
   finalizers:
