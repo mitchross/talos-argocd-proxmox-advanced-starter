@@ -127,7 +127,7 @@ kopiur without the rest of this stack).
 
 ## Version pins (2026-07)
 
-Talos `v1.13.4` (with the mandatory `machine.install.disk` patch) · Omni
+Talos `v1.13.5` (with the mandatory `machine.install.disk` patch) · Omni
 `v1.9.0` · Kubernetes `v1.36.x` · Cilium `1.19.5` · Gateway API `v1.4.1`
 (intentional — don't outrun Cilium) · ArgoCD Helm chart `10.x` ·
 kube-prometheus-stack `87.x` · images SHA-pinned, Renovate-managed.
