@@ -1,0 +1,533 @@
+# Enhanced kube-prometheus-stack configuration
+# Optimized for production workloads with security and performance considerations
+
+# Global settings
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+# CRD Configuration - Essential for proper functioning
+crds:
+  enabled: true
+# Prometheus Configuration
+prometheus:
+  enabled: true
+  prometheusSpec:
+    # Data retention and storage
+    retention: 15d
+    retentionSize: 15GB
+    walCompression: true
+    # Storage configuration with Longhorn
+    storageSpec:
+      volumeClaimTemplate:
+        metadata:
+          # Intentionally backup-exempt. Prometheus metrics are re-scrapeable
+          # within retention; restoring 15d of historical metrics from a backup
+          # snapshot is not worth the I/O. The 2026-05-03 backup-label
+          # migration was reverted same-day after explicit decision that
+          # monitoring data does not warrant the backup pipeline overhead.
+          labels:
+            backup-exempt: "true"
+          annotations:
+            storage.vanillax.dev/backup-exempt-reason: "Prometheus metrics are re-scrapeable; monitoring data not worth backup pipeline overhead"
+        spec:
+          storageClassName: longhorn
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 50Gi
+    # Resource allocation (memory bumped 2026-05-04)
+    # Capacity baseline 2026-05-04 showed Prometheus pod at 2.0 GiB observed
+    # against the 4 GiB limit ceiling (request=2 Gi was at limit-of-use).
+    # Retention 15d + WAL + chunk caches will keep growing; raising headroom
+    # to avoid OOM as series count grows.
+    resources:
+      requests:
+        cpu: 500m
+        memory: 3Gi
+      limits:
+        cpu: 2000m
+        memory: 6Gi
+    # Security context
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 65534
+      fsGroup: 65534
+    # Scrape configuration
+    scrapeInterval: 30s
+    evaluationInterval: 30s
+    scrapeTimeout: 10s
+    # Enable service discovery for dynamic targets
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    # Additional scrape configs for custom monitoring
+    #
+    # Control plane scraping (etcd / kube-controller-manager / kube-scheduler)
+    # uses kubernetes_sd_configs role:node + relabeling to discover CP nodes
+    # by label rather than hardcoding IPs. This is intentional: the cluster
+    # is regularly destroyed/recreated via Omni machine classes, so any
+    # static IP list (chart's `kubeEtcd.endpoints:` field, DHCP reservations,
+    # static machineconfig IPs) would break on every rebuild.
+    #
+    # Requires the matching Talos machineconfig patch in
+    # omni/cluster-template/cluster-template.yaml control-plane-performance:
+    #   etcd.listen-metrics-urls: http://0.0.0.0:2381
+    #   controllerManager.bind-address: 0.0.0.0   (port 10257)
+    #   scheduler.bind-address: 0.0.0.0           (port 10259)
+    #
+    # Job names match what the chart's default PrometheusRules and Grafana
+    # dashboards expect, so KubeControllerManagerDown / KubeSchedulerDown /
+    # etcd* alerts and the standard etcd dashboard "just work".
+    additionalScrapeConfigs:
+      - job_name: 'kube-etcd'
+        scheme: http
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          # Keep only control-plane nodes. Talos applies the standard
+          # node-role.kubernetes.io/control-plane label automatically; using
+          # `labelpresent` is more robust than matching the (empty-string) value.
+          - source_labels: [__meta_kubernetes_node_labelpresent_node_role_kubernetes_io_control_plane]
+            action: keep
+            regex: "true"
+          - source_labels: [__meta_kubernetes_node_address_InternalIP]
+            target_label: __address__
+            replacement: ${1}:2381
+          - source_labels: [__meta_kubernetes_node_name]
+            target_label: instance
+      - job_name: 'kube-controller-manager'
+        scheme: https
+        tls_config:
+          insecure_skip_verify: true
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_node_labelpresent_node_role_kubernetes_io_control_plane]
+            action: keep
+            regex: "true"
+          - source_labels: [__meta_kubernetes_node_address_InternalIP]
+            target_label: __address__
+            replacement: ${1}:10257
+          - source_labels: [__meta_kubernetes_node_name]
+            target_label: instance
+      - job_name: 'kube-scheduler'
+        scheme: https
+        tls_config:
+          insecure_skip_verify: true
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_node_labelpresent_node_role_kubernetes_io_control_plane]
+            action: keep
+            regex: "true"
+          - source_labels: [__meta_kubernetes_node_address_InternalIP]
+            target_label: __address__
+            replacement: ${1}:10259
+          - source_labels: [__meta_kubernetes_node_name]
+            target_label: instance
+    # Remote write configuration (for external storage if needed)
+    remoteWrite: []
+    # Alerting configuration
+    alerting:
+      alertmanagers:
+        - namespace: prometheus-stack
+          name: kube-prometheus-stack-alertmanager
+          port: 9093
+    caching:
+      enabled: true
+      cacheSize: 500MB
+      cacheTTL: 10m
+# Alertmanager Configuration
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    strategy:
+      type: Recreate
+    # Storage for alertmanager
+    storage:
+      volumeClaimTemplate:
+        metadata:
+          # Intentionally backup-exempt. Alertmanager state (silences,
+          # inhibitions, notification log) is operator-set and trivially
+          # recreated; not worth backup pipeline overhead.
+          labels:
+            backup-exempt: "true"
+          annotations:
+            storage.vanillax.dev/backup-exempt-reason: "Alertmanager silences are operator-set; trivially recreated"
+        spec:
+          storageClassName: longhorn
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 5Gi
+    # Resource allocation
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    # Security context
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 65534
+      fsGroup: 65534
+    # Retention
+    retention: 72h
+    # Configuration for alert routing (placeholder)
+    configSecret: ""
+# Grafana Configuration
+grafana:
+  enabled: true
+  deploymentStrategy:
+    type: Recreate
+  # Admin credentials
+  adminPassword: "prom-operator"
+  # Persistence
+  persistence:
+    enabled: true
+    storageClassName: longhorn
+    size: 10Gi
+    accessModes:
+      - ReadWriteOnce
+    # Intentionally backup-exempt. Grafana dashboards and datasource
+    # configs are GitOps-managed; only user prefs / unsaved drafts live
+    # in the PVC. Not worth backup pipeline overhead.
+    # NOTE: the grafana chart ignores `persistence.labels`; PVC labels
+    # must go under `extraPvcLabels` (verified against grafana-12.4.2).
+    extraPvcLabels:
+      backup-exempt: "true"
+    annotations:
+      storage.vanillax.dev/backup-exempt-reason: "Dashboards/datasources are GitOps-managed; only user prefs in PVC"
+  # Resource allocation
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  # Security context
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 472
+    fsGroup: 472
+  # Enable plugins
+  plugins: []
+  # Sidecar configuration - discover dashboards from all namespaces
+  sidecar:
+    dashboards:
+      enabled: true
+      searchNamespace: ALL
+      label: grafana_dashboard
+      labelValue: "1"
+  # Default dashboards
+  defaultDashboardsEnabled: true
+  defaultDashboardsTimezone: UTC
+  # Community dashboards - auto-provisioned from grafana.com
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+      - name: 'grafana-dashboards-kubernetes'
+        orgId: 1
+        folder: 'Kubernetes'
+        type: file
+        disableDeletion: true
+        editable: false
+        options:
+          path: /var/lib/grafana/dashboards/kubernetes
+      - name: 'grafana-dashboards-infrastructure'
+        orgId: 1
+        folder: 'Infrastructure'
+        type: file
+        disableDeletion: true
+        editable: false
+        options:
+          path: /var/lib/grafana/dashboards/infrastructure
+      - name: 'grafana-dashboards-logging'
+        orgId: 1
+        folder: 'Logging'
+        type: file
+        disableDeletion: true
+        editable: false
+        options:
+          path: /var/lib/grafana/dashboards/logging
+  dashboards:
+    kubernetes:
+      k8s-views-global:
+        gnetId: 15757
+        revision: 37
+        datasource: Prometheus
+      k8s-views-namespaces:
+        gnetId: 15758
+        revision: 34
+        datasource: Prometheus
+      k8s-views-nodes:
+        gnetId: 15759
+        revision: 29
+        datasource: Prometheus
+      k8s-views-pods:
+        gnetId: 15760
+        revision: 28
+        datasource: Prometheus
+      node-exporter-full:
+        gnetId: 1860
+        revision: 36
+        datasource: Prometheus
+    logging: {}
+    infrastructure:
+      argocd:
+        gnetId: 14584
+        revision: 1
+        datasource: Prometheus
+      longhorn:
+        gnetId: 13032
+        revision: 6
+        datasource: Prometheus
+      cloudnative-pg:
+        gnetId: 20417
+        revision: 3
+        datasource: Prometheus
+      vpa-autoscaling:
+        gnetId: 22168
+        revision: 1
+        datasource: Prometheus
+  # No additional datasources in the starter — the parent cluster adds Loki
+  # (logs) and Tempo (traces) here; graft yours in when you add a logging stack.
+  additionalDataSources: []
+  # Grafana configuration
+  grafana.ini:
+    server:
+      root_url: https://grafana.vanillax.xyz
+    security:
+      allow_embedding: true
+      cookie_secure: true
+      strict_transport_security: true
+    analytics:
+      reporting_enabled: false
+      check_for_updates: false
+    snapshots:
+      external_enabled: false
+    explore:
+      enabled: true
+    feature_toggles:
+      enable: correlations
+# Node Exporter Configuration
+# Enable for comprehensive node-level metrics (VPA-optimized 2026-02-28)
+nodeExporter:
+  enabled: true
+  hostRootFsMount:
+    enabled: true
+    mountPropagation: HostToContainer
+  # Resource allocation
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+kubeStateMetrics:
+  enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      cpu: 200m
+      memory: 512Mi
+# kube-state-metrics sub-chart values. Expose PVC backup labels and
+# annotations so that alerts can join on the real backup label rather than
+# on a missing volumeattributesclass series, and so the
+# ProtectedPVCSkipRestoreStale alert can detect long-lived skip-restore
+# escape-hatch annotations the operator forgot to remove after a rebuild.
+kube-state-metrics:
+  metricLabelsAllowlist:
+    # backup-exempt surfaces explicitly-exempt PVCs; cnpg.io/cluster distinguishes
+    # CNPG-managed PVCs (Barman to S3, not kopiur). kube-state-metrics sanitizes
+    # the label name to label_cnpg_io_cluster.
+    - persistentvolumeclaims=[backup-exempt,cnpg.io/cluster]
+  rbac:
+    extraRules:
+      - apiGroups: ["apiextensions.k8s.io"]
+        resources: ["customresourcedefinitions"]
+        verbs: ["list", "watch"]
+      - apiGroups: ["autoscaling.k8s.io"]
+        resources: ["verticalpodautoscalers"]
+        verbs: ["list", "watch"]
+  customResourceState:
+    enabled: true
+    config:
+      kind: CustomResourceStateMetrics
+      spec:
+        resources:
+          - groupVersionKind:
+              group: autoscaling.k8s.io
+              kind: "VerticalPodAutoscaler"
+              version: "v1"
+            labelsFromPath:
+              namespace: [metadata, namespace]
+              target_api_version: [spec, targetRef, apiVersion]
+              target_kind: [spec, targetRef, kind]
+              target_name: [spec, targetRef, name]
+              verticalpodautoscaler: [metadata, name]
+            metricNamePrefix: "kube"
+            errorLogV: 10
+            metrics:
+              - name: "verticalpodautoscaler_spec_updatepolicy_updatemode"
+                help: "Update mode of the VerticalPodAutoscaler."
+                each:
+                  type: StateSet
+                  stateSet:
+                    labelName: "update_mode"
+                    path: [spec, updatePolicy, updateMode]
+                    list: ["Auto", "Initial", "Off", "Recreate"]
+              - name: "verticalpodautoscaler_status_recommendation_containerrecommendations_lowerbound_memory"
+                help: "Minimum memory resources the container can use before the VerticalPodAutoscaler updater evicts it."
+                commonLabels:
+                  unit: "byte"
+                  resource: "memory"
+                each:
+                  type: Gauge
+                  gauge:
+                    path: [status, recommendation, containerRecommendations]
+                    labelsFromPath:
+                      container: [containerName]
+                    valueFrom: [lowerBound, memory]
+              - name: "verticalpodautoscaler_status_recommendation_containerrecommendations_lowerbound_cpu"
+                help: "Minimum cpu resources the container can use before the VerticalPodAutoscaler updater evicts it."
+                commonLabels:
+                  unit: "core"
+                  resource: "cpu"
+                each:
+                  type: Gauge
+                  gauge:
+                    path: [status, recommendation, containerRecommendations]
+                    labelsFromPath:
+                      container: [containerName]
+                    valueFrom: [lowerBound, cpu]
+              - name: "verticalpodautoscaler_status_recommendation_containerrecommendations_upperbound_memory"
+                help: "Maximum memory resources the container can use before the VerticalPodAutoscaler updater evicts it."
+                commonLabels:
+                  unit: "byte"
+                  resource: "memory"
+                each:
+                  type: Gauge
+                  gauge:
+                    path: [status, recommendation, containerRecommendations]
+                    labelsFromPath:
+                      container: [containerName]
+                    valueFrom: [upperBound, memory]
+              - name: "verticalpodautoscaler_status_recommendation_containerrecommendations_upperbound_cpu"
+                help: "Maximum cpu resources the container can use before the VerticalPodAutoscaler updater evicts it."
+                commonLabels:
+                  unit: "core"
+                  resource: "cpu"
+                each:
+                  type: Gauge
+                  gauge:
+                    path: [status, recommendation, containerRecommendations]
+                    labelsFromPath:
+                      container: [containerName]
+                    valueFrom: [upperBound, cpu]
+              - name: "verticalpodautoscaler_status_recommendation_containerrecommendations_target_memory"
+                help: "Target memory resources the VerticalPodAutoscaler recommends for the container."
+                commonLabels:
+                  unit: "byte"
+                  resource: "memory"
+                each:
+                  type: Gauge
+                  gauge:
+                    path: [status, recommendation, containerRecommendations]
+                    labelsFromPath:
+                      container: [containerName]
+                    valueFrom: [target, memory]
+              - name: "verticalpodautoscaler_status_recommendation_containerrecommendations_target_cpu"
+                help: "Target cpu resources the VerticalPodAutoscaler recommends for the container."
+                commonLabels:
+                  unit: "core"
+                  resource: "cpu"
+                each:
+                  type: Gauge
+                  gauge:
+                    path: [status, recommendation, containerRecommendations]
+                    labelsFromPath:
+                      container: [containerName]
+                    valueFrom: [target, cpu]
+              - name: "verticalpodautoscaler_status_recommendation_containerrecommendations_uncappedtarget_memory"
+                help: "Target memory resources the VerticalPodAutoscaler recommends for the container ignoring bounds."
+                commonLabels:
+                  unit: "byte"
+                  resource: "memory"
+                each:
+                  type: Gauge
+                  gauge:
+                    path: [status, recommendation, containerRecommendations]
+                    labelsFromPath:
+                      container: [containerName]
+                    valueFrom: [uncappedTarget, memory]
+              - name: "verticalpodautoscaler_status_recommendation_containerrecommendations_uncappedtarget_cpu"
+                help: "Target cpu resources the VerticalPodAutoscaler recommends for the container ignoring bounds."
+                commonLabels:
+                  unit: "core"
+                  resource: "cpu"
+                each:
+                  type: Gauge
+                  gauge:
+                    path: [status, recommendation, containerRecommendations]
+                    labelsFromPath:
+                      container: [containerName]
+                    valueFrom: [uncappedTarget, cpu]
+# Prometheus Operator Configuration
+prometheusOperator:
+  enabled: true
+  # Use cert-manager for webhook certs instead of Helm hook Jobs.
+  # The default hook Jobs (admission-create/admission-patch) create a
+  # ServiceAccount as a hook resource, then Jobs that depend on it.
+  # ArgoCD can delete the SA before the patch Job runs, causing a
+  # permanent stuck sync that cascades into API server overload.
+  admissionWebhooks:
+    certManager:
+      enabled: true
+  # Resource allocation
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  # Security context
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+# Additional monitoring components
+kubelet:
+  enabled: true
+  serviceMonitor:
+    interval: 30s
+# Talos hides these bind addresses, so we disable scraping to avoid target down alerts
+kubeApiServer:
+  enabled: true
+  serviceMonitor:
+    interval: 30s
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeEtcd:
+  enabled: false
+kubeProxy:
+  enabled: false
+coreDns:
+  enabled: true
+  serviceMonitor:
+    interval: 30s
+kubeDns:
+  enabled: false
