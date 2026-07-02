@@ -1,0 +1,155 @@
+# Longhorn Node Failure and Recovery Settings
+# These settings prevent the issues you experienced with faulted volumes
+# when nodes were removed from the cluster.
+
+---
+# CRITICAL: Automatically delete pods when a node goes down
+# This allows Longhorn to reschedule replicas to healthy nodes
+# Current: do-nothing (causes volumes to stay faulted)
+# Options: do-nothing, delete-deployment-pod, delete-statefulset-pod, delete-both-statefulset-and-deployment-pod
+apiVersion: longhorn.io/v1beta2
+kind: Setting
+metadata:
+  name: node-down-pod-deletion-policy
+  namespace: longhorn-system
+value: "delete-both-statefulset-and-deployment-pod"
+
+---
+# Automatically delete orphaned resources when all replicas are lost
+# This prevents PVCs from getting stuck in Terminating state
+# Format: semicolon-separated list of resource types
+# Valid types: replica-data (replica data store), instance (engine and replica runtime)
+apiVersion: longhorn.io/v1beta2
+kind: Setting
+metadata:
+  name: orphan-resource-auto-deletion
+  namespace: longhorn-system
+value: "replica-data;instance"
+
+---
+# Block node drain if it contains the last healthy replica
+# This prevents accidental data loss when draining nodes
+# Current: already set to block-if-contains-last-replica ✓
+apiVersion: longhorn.io/v1beta2
+kind: Setting
+metadata:
+  name: node-drain-policy
+  namespace: longhorn-system
+value: "block-if-contains-last-replica"
+
+---
+# Reserve NOTHING on default-created disks (V2 rebuild, 2026-06-11).
+# The old value (25%) was a V1-era fix for "insufficient storage" when the
+# default disk lived on the shared OS partition. On V2 every Longhorn disk is
+# a DEDICATED raw block device (/dev/sdb via the cluster template's
+# default-disks-config annotation) with nothing else on it — reserving 25%
+# would silently waste ~176Gi per 704G disk, because longhorn-manager
+# computes storageReserved from this percentage at disk-creation time when
+# the annotation says storageReserved: 0.
+# NOTE: this Setting CR is authoritative — values.yaml defaultSettings only
+# seeds on first install (see storage-over-provisioning-percentage below).
+apiVersion: longhorn.io/v1beta2
+kind: Setting
+metadata:
+  name: storage-reserved-percentage-for-default-disk
+  namespace: longhorn-system
+value: "0"
+
+---
+# Enable fast replica rebuild for quicker recovery
+# NOTE: Must be a plain boolean string, not JSON format
+apiVersion: longhorn.io/v1beta2
+kind: Setting
+metadata:
+  name: fast-replica-rebuild-enabled
+  namespace: longhorn-system
+value: "true"
+
+---
+# Concurrent replica rebuilds per node — INTENTIONALLY 1 (2026-06-12 incident).
+# During the post-nuke mass restore, 5 concurrent rebuilds per node saturated
+# the then-active v2 (SPDK) data engine: NVMe-TCP keep-alive timeouts killed
+# engine frontends, faulting volumes faster than rebuilds drained them — a
+# self-sustaining storm (restores stuck at 16/25 for 30+ min; nodes were at
+# ~22% CPU, so this was SPDK contention, not resources). Dropping to 1 broke
+# the loop within minutes. The V2 engine was retired the same day, but the
+# throttle STAYS at 1 on V1: mass-restore bootstraps overload any engine on
+# this hardware (4 consumer SSDs in one stripe behind all workers), and slow
+# redundancy recovery is an acceptable price. Raise to 2-3 only after a
+# passed DR drill shows headroom.
+apiVersion: longhorn.io/v1beta2
+kind: Setting
+metadata:
+  name: concurrent-replica-rebuild-per-node-limit
+  namespace: longhorn-system
+value: "1"
+
+---
+# Disable scheduling on cordoned nodes
+# Prevents new replicas from being placed on nodes being drained
+# Current: true ✓
+apiVersion: longhorn.io/v1beta2
+kind: Setting
+metadata:
+  name: disable-scheduling-on-cordoned-node
+  namespace: longhorn-system
+value: "true"
+
+---
+# Automatically detach volumes on node failure after timeout
+# This allows volumes to be reattached to healthy nodes
+apiVersion: longhorn.io/v1beta2
+kind: Setting
+metadata:
+  name: kubernetes-cluster-autoscaler-enabled
+  namespace: longhorn-system
+value: "true"
+
+---
+# Auto-delete pods when volumes are detached unexpectedly
+# Helps recover from node failures more quickly
+apiVersion: longhorn.io/v1beta2
+kind: Setting
+metadata:
+  name: auto-delete-pod-when-volume-detached-unexpectedly
+  namespace: longhorn-system
+value: "true"
+
+---
+# V2 (SPDK) reactor cores per node: default {"v2":"0x3"} (2 cores) -> 4 cores.
+# Added 2026-06-11 after the first V2 nuke-restore wedged: 25 concurrent
+# VolSync restores + ~40 app PVC attaches drove both SPDK targets into
+# stuck teardown loops ("NVMe path still exists after delete", engines
+# desire=running stuck stopped) that survived instance-manager restarts.
+# 2 busy-poll cores could not drain the attach/detach churn on 32-core
+# nodes — the setting's own upstream description warns single/low core
+# counts cause "timeout events and operational instability" under heavy IO.
+# Setting name is the consolidated `data-engine-cpu-mask` (engine-keyed
+# JSON; `v2-data-engine-cpu-mask` is a legacy constant that 1.12.0 does
+# not accept as a definition). DANGER-ZONE: on a LIVE cluster it only
+# applies once all V2 volumes are detached — in practice it lands at the
+# next nuke/rebuild bootstrap, which is exactly when it matters.
+apiVersion: longhorn.io/v1beta2
+kind: Setting
+metadata:
+  name: data-engine-cpu-mask
+  namespace: longhorn-system
+value: '{"v2":"0xf"}'
+
+---
+# Over-provisioning ceiling for replica scheduling.
+# values.yaml's defaultSettings only seeds on FIRST install — Longhorn
+# manages settings via this CRD post-install, so the chart value at 300
+# was being silently reverted to 200 by longhorn-manager's reconciliation.
+# Pinning it here means ArgoCD owns the value and it stays at 300.
+#
+# Per-node ceiling math: (disk_size - reserved) * over_provisioning%
+# V2 layout (2026-06-11): reserved=0 on the dedicated 704G (672G GPU) block
+# disks, so at 300% the ceiling is ~2100 Gi/node. Physical usage stays the
+# real constraint; 300% is scheduling headroom, not a promise of capacity.
+apiVersion: longhorn.io/v1beta2
+kind: Setting
+metadata:
+  name: storage-over-provisioning-percentage
+  namespace: longhorn-system
+value: "300"

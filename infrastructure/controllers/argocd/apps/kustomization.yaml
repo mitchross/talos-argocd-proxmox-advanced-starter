@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# RULE: every YAML file under apps/ MUST be listed here — unlisted files are
+# never rendered, so ArgoCD never sees them.
+resources:
+  - projects.yaml
+  # Bootstrap entrypoints (Wave 0): Argo CD itself plus cluster services
+  # required by every later wave.
+  - bootstrap/argocd.yaml
+  - bootstrap/cilium-app.yaml
+  - bootstrap/1passwordconnect.yaml
+  - bootstrap/external-secrets.yaml
+
+  # Core dependencies: storage, certs, and the backup engine.
+  - core-dependencies/cert-manager-app.yaml # Wave 1 — cnpg-barman-plugin (Wave 3) needs it
+  - core-dependencies/longhorn-app.yaml # Wave 1 — storage before PVC consumers
+  - core-dependencies/snapshot-controller-app.yaml # Wave 1 — kopiur copyMethod=Snapshot needs CSI VolumeSnapshot
+  - core-dependencies/kopiur-operator-app.yaml # Wave 2 — CRDs + controller + webhook (volume populator)
+  - core-dependencies/kopiur-config-app.yaml # Wave 3 — ClusterRepository + creds fanout + VolumeSnapshotClass
+
+  # Custom entrypoints: standalone apps kept out of AppSets for ordering reasons.
+  - custom-entrypoints/cnpg-barman-plugin-app.yaml # Wave 3 — CNPG clusters (Wave 4) reference it
+
+  # ApplicationSet entrypoints: broad discovery after core dependencies exist.
+  - appsets/infrastructure-appset.yaml # Wave 4 — explicit path list
+  - appsets/database-appset.yaml # Wave 4 — infrastructure/database/*/* (selfHeal: false for DR)
+  - appsets/monitoring-appset.yaml # Wave 5 — monitoring/*
+  - appsets/my-apps-appset.yaml # Wave 6 — my-apps/*/*

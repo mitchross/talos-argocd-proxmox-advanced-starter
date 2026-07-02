@@ -1,0 +1,67 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: infrastructure
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  generators:
+  - git:
+      repoURL: https://github.com/mitchross/talos-argocd-proxmox-advanced-starter.git
+      revision: main
+      directories:
+      # EXPLICIT list, not a glob — adding an infrastructure component means
+      # adding its path here. cert-manager, longhorn, snapshot-controller, and
+      # the kopiur apps are NOT listed: they run as standalone Wave-1/2/3
+      # core-dependency Applications so storage and the backup engine are
+      # healthy before this Wave-4 set. Do NOT re-add them here or they will
+      # be double-managed.
+      - path: infrastructure/controllers/external-dns
+      - path: infrastructure/networking/cloudflared
+      - path: infrastructure/networking/gateway
+  template:
+    metadata:
+      name: '{{path.basename}}'
+      annotations:
+        argocd.argoproj.io/manifest-generate-paths: '{{path}}'
+        argocd.argoproj.io/sync-wave: "4"
+      labels:
+        app.kubernetes.io/part-of: infrastructure
+    spec:
+      project: infrastructure
+      revisionHistoryLimit: 3
+      source:
+        repoURL: https://github.com/mitchross/talos-argocd-proxmox-advanced-starter.git
+        targetRevision: main
+        path: '{{path}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{path.basename}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+          allowEmpty: false
+        syncOptions:
+        - CreateNamespace=true
+        - ServerSideApply=true
+        - RespectIgnoreDifferences=true
+        - Replace=false
+        retry:
+          # Bounded retry — see root.yaml. Unbounded -1 plus a misbehaving
+          # PreSync hook can wedge the entire app-of-apps behind a stale
+          # manifest snapshot (incidents 2026-04-20, 2026-05-01). selfHeal: true
+          # kicks a fresh sync against current git on the next reconcile.
+          limit: 10
+          backoff:
+            duration: 10s
+            factor: 2
+            maxDuration: 10m
+      ignoreDifferences:
+      - group: ""
+        kind: PersistentVolumeClaim
+        jsonPointers:
+        - /spec/dataSource
+        - /spec/dataSourceRef
+        - /spec/volumeName

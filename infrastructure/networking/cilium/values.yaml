@@ -1,0 +1,148 @@
+# Cilium Helm Values for Talos single-node GPU production cluster
+# ArgoCD Sync Wave: 0 (Foundation - must deploy before everything else)
+annotations:
+  argocd.argoproj.io/sync-wave: "0"
+
+# Cluster Configuration
+# IMPORTANT: cluster.name must match the --set cluster.name used during initial
+# cilium install at bootstrap. Mismatched names break Hubble certificate SANs.
+cluster:
+  name: talos-singlenode-gpu-prod
+  id: 2
+
+# Kubernetes API Configuration (kubePrism via SideroLink)
+k8sServiceHost: localhost
+k8sServicePort: "7445"
+
+# Kube-proxy Replacement
+kubeProxyReplacement: true
+
+# Talos-specific Security Context (required for init containers)
+securityContext:
+  capabilities:
+    ciliumAgent:
+    - CHOWN
+    - KILL
+    - NET_ADMIN
+    - NET_RAW
+    - IPC_LOCK
+    - SYS_ADMIN
+    - SYS_RESOURCE
+    - DAC_OVERRIDE
+    - FOWNER
+    - SETGID
+    - SETUID
+    cleanCiliumState:
+    - NET_ADMIN
+    - SYS_ADMIN
+    - SYS_RESOURCE
+
+# Talos-specific cgroup configuration
+cgroup:
+  autoMount:
+    enabled: false
+  hostRoot: /sys/fs/cgroup
+
+# Routing Configuration
+routingMode: native
+autoDirectNodeRoutes: true
+ipv4NativeRoutingCIDR: 10.14.0.0/16
+
+# IPAM Configuration
+ipam:
+  mode: kubernetes
+
+# Enable Socket-level Load Balancing (critical for pod-to-service connectivity)
+socketLB:
+  enabled: true
+  hostNamespaceOnly: false
+
+# Enable Bandwidth Manager for better TCP performance
+bandwidthManager:
+  enabled: true
+  bbr: true # Enable BBR congestion control
+
+# BPF Host Routing
+bpf:
+  masquerade: true
+  ctTcpTimeout: 21600
+  ctAnyTimeout: 3600
+  # Performance: pre-allocate BPF map entries (reduces per-packet latency)
+  preallocateMaps: true
+
+# Performance: BIG TCP reduces CPU overhead for large transfers (kernel >= 5.19)
+enableIPv4BIGTCP: true
+
+# L2 Announcements for LoadBalancer Services
+l2announcements:
+  enabled: true
+  # Increase lease duration to reduce API calls
+  leaseDuration: "15s"
+  leaseRenewDeadline: "5s"
+  leaseRetryPeriod: "2s"
+
+# Enable XDP acceleration (REQUIRED for Talos L2 announcements)
+# Fixes kernel ARP dropping issue between XDP and TC in Talos 1.9+
+# See: https://github.com/cilium/cilium/discussions/36829
+loadBalancer:
+  acceleration: best-effort
+
+# Increase API rate limits for L2 announcer lease management
+# Formula: QPS = #services * (1 / leaseRenewDeadline)
+# With 15 services: 15 * (1/5) = 3 QPS, so 20 QPS gives headroom
+k8sClientRateLimit:
+  qps: 20
+  burst: 40
+
+# Gateway API Support
+gatewayAPI:
+  enabled: true
+  # CRITICAL FIX: Use Local externalTrafficPolicy to preserve source IP
+  # and enable proper connection tracking. This fixes intermittent connectivity.
+  externalTrafficPolicy: Local
+  # Enable session affinity for consistent routing
+  sessionAffinity: true
+  sessionAffinityTimeoutSeconds: 10800 # 3 hours
+
+# Cilium agent resources (VPA-optimized 2026-02-28; mem limit raised 2026-05-04)
+# Capacity baseline 2026-05-04 showed cilium-* daemonset pods observed
+# 0.8-1.2 GiB at the 2 GiB limit boundary. Endpoint maps grow with churn.
+# Bumping limit to 3 GiB to give headroom; request unchanged (VPA target).
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: 2000m
+    memory: 3Gi
+
+# Hubble (Observability)
+hubble:
+  enabled: true 
+  # Performance: increase event queue to prevent drops under load
+  eventQueueSize: 16384
+  relay:
+    enabled: true
+  ui:
+    enabled: true
+
+# Operator Configuration
+operator:
+  # SINGLE-NODE: the required hostname anti-affinity below makes a 2nd operator
+  # replica permanently unschedulable (no 2nd host) -> the Deployment never goes
+  # 2/2 healthy and the Cilium ArgoCD app hangs Progressing. 1 replica on one node.
+  replicas: 1
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchLabels:
+            io.cilium/app: operator
+        topologyKey: kubernetes.io/hostname

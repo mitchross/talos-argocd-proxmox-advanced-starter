@@ -1,0 +1,31 @@
+---
+apiVersion: cilium.io/v2alpha1
+kind: CiliumL2AnnouncementPolicy
+metadata:
+  name: l2-policy
+  namespace: kube-system
+  annotations:
+    # Apply AFTER Cilium core is running to prevent announcement disruption
+    argocd.argoproj.io/sync-wave: "1"
+    # Prevent unnecessary syncs that disrupt L2 announcements
+    argocd.argoproj.io/compare-options: IgnoreExtraneous
+spec:
+  # CRITICAL: Enable L2 announcements for LoadBalancer IPs
+  loadBalancerIPs: true
+
+  # Announce LoadBalancer IPs on all network interfaces starting with 'e'
+  # This typically matches: eth0, eno1, enp*, etc.
+  interfaces:
+    - ^(eth|ens)\d+$
+
+
+  # Announce for all LoadBalancer services
+  serviceSelector:
+    matchLabels: {}
+
+  # Single-node cluster: the only node is a control-plane node, so it must be
+  # eligible to announce LoadBalancer IPs. Excluding control-plane nodes leaves
+  # every VIP allocated but unreachable from the LAN.
+  nodeSelector:
+    matchLabels: {}
+    matchExpressions: []
