@@ -1,0 +1,12 @@
+# The MINIMAL app: a directory + this file = a deployed ArgoCD Application.
+# No storage, no backups, no secrets — the smallest thing that ships.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - deployment.yaml
+  - service.yaml
+  - httproute.yaml
+
+namespace: nginx-example

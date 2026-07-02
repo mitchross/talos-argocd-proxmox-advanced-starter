@@ -1,0 +1,47 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: gitea
+resources:
+- namespace.yaml
+- httproute.yaml
+- externalsecret.yaml
+- kopiur/gitea-shared-storage.yaml
+
+# Uniform kopiur backup fields (repository, copyMethod, populator, privileged
+# mover) for the per-PVC stub in kopiur/.
+components:
+- ../../common/kopiur-backup
+
+helmCharts:
+- name: gitea
+  repo: https://dl.gitea.com/charts/
+  version: 12.6.0
+  releaseName: gitea
+  namespace: gitea
+  valuesFile: values.yaml
+
+patches:
+- path: fix-permissions-patch.yaml
+  target:
+    kind: Deployment
+    name: gitea
+- target:
+    kind: PersistentVolumeClaim
+    name: gitea-shared-storage
+  patch: |
+    # kopiur backup of the chart-generated PVC: backup CRs live in
+    # kopiur/gitea-shared-storage.yaml; uniform fields + privileged mover from
+    # the ../../common/kopiur-backup component. dataSourceRef -> the kopiur
+    # Restore so a recreate restores-before-bind.
+    - op: add
+      path: /metadata/annotations/argocd.argoproj.io~1compare-options
+      value: ServerSideDiff=false
+    - op: add
+      path: /metadata/annotations/argocd.argoproj.io~1sync-options
+      value: ServerSideApply=false
+    - op: add
+      path: /spec/dataSourceRef
+      value:
+        apiGroup: kopiur.home-operations.com
+        kind: Restore
+        name: gitea-shared-storage-restore

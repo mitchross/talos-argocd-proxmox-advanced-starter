@@ -1,0 +1,66 @@
+---
+# yaml-language-server: $schema=https://k8s-schemas.home-operations.com/kopiur.home-operations.com/snapshotpolicy_v1alpha1.json
+# karakeep data-pvc backup STUB — only the per-PVC varying fields. The uniform
+# bits (copyMethod, volumeSnapshotClassName, repository, backup mover SC) are
+# injected by the ../../../common/kopiur-backup component. dataSourceRef on the
+# PVC (pvc-data.yaml) -> data-pvc-restore.
+apiVersion: kopiur.home-operations.com/v1alpha1
+kind: SnapshotPolicy
+metadata:
+  name: data-pvc
+  namespace: karakeep
+spec:
+  sources:
+    - pvc:
+        name: data-pvc
+  identity:
+    username: data-pvc
+    hostname: karakeep
+  retention:
+    keepHourly: 24
+    keepDaily: 7
+    keepWeekly: 4
+  mover:
+    securityContext:
+      runAsUser: 1001
+      runAsGroup: 1001
+      runAsNonRoot: true
+    podSecurityContext:
+      fsGroup: 1001
+      supplementalGroups:
+        - 1001
+---
+# yaml-language-server: $schema=https://k8s-schemas.home-operations.com/kopiur.home-operations.com/snapshotschedule_v1alpha1.json
+apiVersion: kopiur.home-operations.com/v1alpha1
+kind: SnapshotSchedule
+metadata:
+  name: data-pvc-hourly
+  namespace: karakeep
+spec:
+  policyRef:
+    name: data-pvc
+  schedule:
+    cron: "10 * * * *" # preserves the prior hourly cadence (minute 10)
+---
+# yaml-language-server: $schema=https://k8s-schemas.home-operations.com/kopiur.home-operations.com/restore_v1alpha1.json
+apiVersion: kopiur.home-operations.com/v1alpha1
+kind: Restore
+metadata:
+  name: data-pvc-restore
+  namespace: karakeep
+spec:
+  source:
+    fromPolicy:
+      name: data-pvc
+      offset: 0 # 0 = latest snapshot for this policy's identity
+  # repository, target.populator, policy.onMissingSnapshot ← component
+  # mover securityContext (uid 1001) ← per-app patch in kustomization.yaml
+  mover:
+    securityContext:
+      runAsUser: 1001
+      runAsGroup: 1001
+      runAsNonRoot: true
+    podSecurityContext:
+      fsGroup: 1001
+      supplementalGroups:
+        - 1001
