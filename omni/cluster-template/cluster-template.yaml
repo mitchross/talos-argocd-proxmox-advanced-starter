@@ -39,9 +39,9 @@ name: homelab
 labels:
   cluster-id: "1"
 kubernetes:
-  version: v1.36.0
+  version: v1.36.2
 talos:
-  version: v1.13.0
+  version: v1.13.4
 patches:
   - name: disable-default-cni
     inline:

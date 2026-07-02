@@ -1,33 +1,26 @@
 name: Cluster CI
 
-# Validates the GitOps repo on every PR and main push:
-#   1. ArgoCD application topology (no duplicate names, sync wave
-#      continuity, kustomization completeness)
-#   2. Kustomize render + Kubernetes schema validation (kubeconform)
-#   3. shellcheck on scripts/ (informational; doesn't block)
-#
-# Companion files:
-#   - scripts/validate-argocd-apps.sh — the topology check
-#   - .github/renovate.json5         — what bumps are auto-merged
-#   - docs/dockerhub-rate-limit-mitigation.md — why daily docker schedule
-
 on:
   pull_request:
     paths:
       - infrastructure/**
       - monitoring/**
-      - apps/**
+      - my-apps/**
       - scripts/**
+      - scripts/validate-argocd-apps.sh
       - .github/workflows/cluster-ci.yml
+      - .github/renovate.json5
   push:
     branches:
       - main
     paths:
       - infrastructure/**
       - monitoring/**
-      - apps/**
+      - my-apps/**
       - scripts/**
+      - scripts/validate-argocd-apps.sh
       - .github/workflows/cluster-ci.yml
+      - .github/renovate.json5
 
 permissions:
   contents: read
@@ -72,7 +65,7 @@ jobs:
       - name: Render all kustomizations
         run: |
           set -euo pipefail
-          mapfile -t dirs < <(find infrastructure monitoring apps -type f -name kustomization.yaml -exec dirname {} \; | sort -u)
+          mapfile -t dirs < <(find infrastructure monitoring my-apps -type f -name kustomization.yaml -exec dirname {} \; | sort -u)
 
           if [ "${#dirs[@]}" -eq 0 ]; then
             echo "No kustomization directories found."
@@ -89,16 +82,14 @@ jobs:
       - name: Validate Kubernetes schemas
         run: |
           set -euo pipefail
-          # Filter known kubeconform false positives — VolSync
-          # ReplicationSource: Datree's CRD catalog schema is stale for
-          # the VolSync version this starter pins (perfectra1n fork) and
-          # rejects valid spec.kopia configs.
-          # Split multi-doc YAML into per-document files, skip those
-          # documents.
+          # Filter a known kubeconform false positive:
+          # - Gitea Helm-rendered Service gitea-http: targetPort triggers a
+          #   oneOf ambiguity in the Kubernetes Service schema.
+          # (kopiur CRDs are skipped via -ignore-missing-schemas below.)
           csplit -z -f /tmp/doc- /tmp/all-manifests.yaml '/^---$/' '{*}' > /dev/null
           : > /tmp/filtered-manifests.yaml
           for f in /tmp/doc-*; do
-            if grep -q 'apiVersion: volsync.backube/v1alpha1' "$f" && grep -q 'kind: ReplicationSource' "$f"; then
+            if grep -q 'kind: Service' "$f" && grep -q 'name: gitea-http' "$f"; then
               continue
             fi
             cat "$f" >> /tmp/filtered-manifests.yaml
@@ -110,6 +101,54 @@ jobs:
             -schema-location default \
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
             /tmp/filtered-manifests.yaml
+
+      - name: Validate kopiur backup coverage
+        # Replaces the retired pvc-plumber validate-restore-contract.sh and the
+        # backup-exempt-contract job. Runs on the RENDERED stream so Helm-rendered
+        # PVCs (gitea, tubesync) are covered. Hard-fails when a backed-up PVC is
+        # missing its dataSourceRef (recreates EMPTY in DR) or a backed-up namespace
+        # lacks the kopiur.home-operations.com/repo label (repo creds won't fan in);
+        # warns on missing mover securityContext, uncovered+unexempt PVCs, and
+        # backup-exempt PVCs missing the qualified reason annotation.
+        run: |
+          set -euo pipefail
+          python3 -c "import yaml" 2>/dev/null || pip3 install --quiet pyyaml
+          python3 ./scripts/validate-kopiur-coverage.py /tmp/all-manifests.yaml
+
+  # backup-exempt-contract job RETIRED 2026-06-27 (pvc-plumber removed). It
+  # hard-failed on the bare `backup-exempt-reason` key because pvc-plumber denied
+  # such PVCs on CREATE; with pvc-plumber gone, nothing enforces the key, so the
+  # check is folded into validate-kopiur-coverage.py as a WARNING (grep-consistency
+  # only). The coverage check runs as a step in the render-and-schema job above.
+
+  renovate-config-validate:
+    name: Renovate Config Validation
+    # Catches the class of bug that opened issue #1284 on 2026-05-10:
+    # `packageRules` cannot combine `matchUpdateTypes` and `versioning`,
+    # but the validator only flags it at runtime — Renovate stops opening
+    # PRs cluster-wide until fixed. Run validator on every PR that touches
+    # .github/renovate.json5 so the bad rule never reaches main.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          # Renovate >=41 requires Node >=22 and dropped Node 20. On Node 20,
+          # `npx renovate` silently resolves to an old renovate major that
+          # still uses `fileMatch`, so it rejects this repo's modern
+          # `managerFilePatterns` config and fails EVERY renovate PR.
+          node-version: '22'
+
+      - name: Validate Renovate config
+        run: |
+          set -euo pipefail
+          # The validator looks at the filename to decide global vs repo
+          # config; .github/renovate.json5 is treated as global, which
+          # surfaces the same packageRules / managers errors we care about.
+          npx --yes --package=renovate renovate-config-validator --strict .github/renovate.json5
 
   shellcheck:
     name: Shell Script Lint (Informational)
@@ -128,9 +167,4 @@ jobs:
       - name: Run shellcheck on scripts
         run: |
           set -euo pipefail
-          # Only lint actual shell scripts; tolerate empty scripts/ dir.
-          if compgen -G "scripts/*.sh" > /dev/null; then
-            shellcheck -S warning scripts/*.sh
-          else
-            echo "No shell scripts to lint."
-          fi
+          shellcheck -S warning scripts/*.sh
