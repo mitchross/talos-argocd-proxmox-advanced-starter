@@ -125,8 +125,6 @@ configs:
         end
       end
       return hs
-    # (VolSync ReplicationSource/Destination health checks removed 2026-06-27 —
-    # VolSync retired, replaced by kopiur. kopiur CRs report native health.)
     # Surface ExternalSecret sync failures (default reports health=None, so a
     # broken 1Password fetch stays invisible). Keys on the Ready condition.
     resource.customizations.health.external-secrets.io_ExternalSecret: |

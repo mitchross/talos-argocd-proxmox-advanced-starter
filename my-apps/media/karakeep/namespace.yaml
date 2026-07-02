@@ -3,12 +3,10 @@ kind: Namespace
 metadata:
   name: karakeep
   labels:
-    # kopiur-managed namespace: drives the ClusterExternalSecret cred fanout AND
-    # ClusterRepository tenancy (allowedNamespaces selector). Replaces the
-    # pvc-plumber managed-namespace + volsync privileged-movers labels.
+    # The ONE label that opts a namespace into backups: drives the
+    # ClusterExternalSecret credential fan-out AND ClusterRepository tenancy
+    # (allowedNamespaces selector).
     kopiur.home-operations.com/repo: cluster-kopia
-  annotations:
-    # Gate for the privileged root mover (kopiur-backup component default) —
-    # analog of the VolSync privileged-movers label. Required or movers get
-    # MoverPermitted=False.
-    kopiur.home-operations.com/privileged-movers: "true"
+  # No privileged-movers annotation: karakeep's mover runs as the data owner
+  # (uid 1001, set in kopiur/data-pvc.yaml). The annotation is only required
+  # when a mover must run as root (uid 0).

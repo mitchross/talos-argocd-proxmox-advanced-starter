@@ -62,7 +62,7 @@ defaultSettings:
   autoCleanupSystemGeneratedSnapshot: "true"
   # Allow Longhorn to auto-upgrade volume engines after manager upgrades
   concurrentAutomaticEngineUpgradePerNodeLimit: "3"
-  # Allow detached volumes to rebuild replicas (fixes VolSync clone volumes
+  # Allow detached volumes to rebuild replicas (fixes backup clone volumes
   # stuck in VolumeCloneCopyCompleteAwaitingHealthy with replica count > 1)
   offlineReplicaRebuilding: "true"
   # V1 data engine is the chart default — no v1DataEngine/v2DataEngine keys
@@ -81,8 +81,8 @@ preUpgradeChecker:
 persistence:
   # -- The chart-created `longhorn` StorageClass, cluster default. The class
   # KEEPS the name `longhorn` deliberately — 40+ PVCs across my-apps/
-  # monitoring/infrastructure, the inline VolSync ReplicationSource/
-  # Destination configs, the pvc-plumber backup contract, and the CLAUDE.md /
+  # monitoring/infrastructure, the kopiur backup CRs live with each app,
+  # Destination configs, the kopiur backup contract, and the CLAUDE.md /
   # add-backup guidance all reference `storageClassName: longhorn` explicitly.
   # With no dataEngine override the class provisions V1 volumes (chart
   # default) — the `dataEngine: v2` routing was removed 2026-06-12.
@@ -92,7 +92,7 @@ persistence:
   # class): MUST be 1. With replica >1 on one node, Longhorn's default replica
   # anti-affinity has nowhere to place the extra replicas, so every volume stays
   # Degraded forever. Node-failure resilience is N/A with a single node anyway —
-  # off-cluster durability comes from VolSync + Kopia backups to NFS.
+  # off-cluster durability comes from kopiur + Kopia backups to S3.
   # (Was 2 for the multi-node DL360 cluster, where Longhorn served from a
   # surviving replica on another node; restore that value if you scale back out.)
   defaultClassReplicaCount: 1

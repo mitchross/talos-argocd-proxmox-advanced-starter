@@ -8,7 +8,7 @@
 # Installs the 7 CRDs + operator + webhook. Images/chart pinned to 0.4.13 in
 # that dir's values.yaml + kustomization.yaml.
 #
-# Wave 2: same level as pvc-plumber. The operator serves the volume populator
+# Wave 2: after storage (Wave 1). The operator serves the volume populator
 # AND its webhook, so it must be healthy before any PVC carrying a kopiur
 # dataSourceRef is created (DR cold-start ordering).
 #

@@ -88,6 +88,25 @@ kubectl -n karakeep delete pvc data-pvc   # (scale down first — see the doc)
 kubectl -n karakeep get pvc data-pvc -w   # Pending → Bound WITH data
 ```
 
+<details>
+<summary>Manual bootstrap equivalent (what the script does)</summary>
+
+```bash
+kubectl apply -f infrastructure/controllers/argocd/ns.yaml
+
+helm upgrade --install argocd argo-cd \
+  --repo https://argoproj.github.io/argo-helm \
+  --version 10.0.0 \
+  --namespace argocd \
+  --values infrastructure/controllers/argocd/values.yaml \
+  --wait --timeout 10m
+
+kubectl wait --for condition=established --timeout=60s crd/applications.argoproj.io
+kubectl apply -f infrastructure/controllers/argocd/root.yaml
+```
+
+</details>
+
 ## Docs
 
 | Doc | What |

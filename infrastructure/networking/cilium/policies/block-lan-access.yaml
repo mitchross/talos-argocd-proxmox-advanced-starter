@@ -49,7 +49,7 @@ spec:
 
     # ============================================
     # ALLOW: TrueNAS - API + NFS + SMB + RustFS Storage
-    # (WebSocket API for TrueNAS CSI, NFS/SMB, RustFS for VolSync backups)
+    # (NFS/SMB shares, RustFS S3 for kopiur backups)
     # ============================================
     - toCIDR:
         - 192.168.10.133/32

@@ -42,7 +42,7 @@ EXEMPT_REASON = "storage.vanillax.dev/backup-exempt-reason"
 SYSTEM_NS = {
     "kube-system", "argocd", "longhorn-system", "kopiur-system", "cert-manager",
     "external-secrets", "kube-node-lease", "kube-public", "monitoring", "gateway",
-    "1passwordconnect", "volsync-system",
+    "1passwordconnect",
 }
 
 

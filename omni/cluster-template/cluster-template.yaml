@@ -9,7 +9,7 @@
 #
 # Why a single CP? This is a starter, not a production cluster. A single
 # CP is fine for learning and for the demos in this repo. ArgoCD,
-# AppSets, the pvc-plumber operator, Longhorn — none of them require an
+# AppSets, the kopiur operator, Longhorn — none of them require an
 # HA control plane to function. When you're ready for production, add
 # two more CPs (size: 3) and re-run `omnictl cluster template sync`.
 #

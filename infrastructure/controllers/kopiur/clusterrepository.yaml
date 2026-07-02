@@ -1,15 +1,14 @@
 # yaml-language-server: $schema=https://k8s-schemas.home-operations.com/kopiur.home-operations.com/clusterrepository_v1alpha1.json
-# Cluster-wide kopia repository for kopiur — the engine equivalent of the
-# VolSync `volsync-kopia-repository` secret, but as a first-class CR.
+# Cluster-wide kopia repository for kopiur, as a first-class CR — the ONE
+# definition every backup and restore in the cluster flows through.
 #
-# ISOLATION: dedicated `kopiur` bucket on RustFS (created 2026-06-26).
-# This is a FRESH kopia repo (create.enabled: true) — it does NOT read the
-# VolSync repo at s3://volsync-kopia/cluster. So the proven backup path is
-# untouched, and karakeep's first kopiur snapshot captures its CURRENT data.
+# The `kopiur` bucket lives on the OFF-CLUSTER S3 box (docs/rustfs-setup.md);
+# a fresh repo is created at the bucket root on first boot
+# (create.enabled: true).
 #
-# ⚠️ ACCESS: confirm the rustfs workload key (rustfs-workload-access-key) has
-# read/write on the `kopiur` bucket — the existing policy may scope it to
-# volsync-kopia only. If denied, widen the RustFS bucket policy (or use admin creds).
+# ⚠️ ACCESS: the workload key (rustfs-workload-access-key) MUST have
+# read/write on the `kopiur` bucket — a policy scoped to other buckets lets
+# everything look healthy while the repo fails to connect.
 # Endpoint is the S3 API port :30292 (NOT the console :30293).
 #
 # Field shapes confirmed vs deploy/examples/backends/s3-minio-http.yaml:
@@ -47,7 +46,7 @@ spec:
   # consumer namespace by the ClusterExternalSecret (see externalsecret.yaml),
   # so the operator needs no cluster-wide secrets-write RBAC.
   allowedNamespaces:
-    # Label-driven tenancy (the pvc-plumber `managed-namespace` analog): any
+    # Label-driven tenancy: any
     # namespace labeled kopiur.home-operations.com/repo=cluster-kopia may use this
     # repo. The SAME label drives the ESO cred fanout (externalsecret.yaml), so
     # onboarding an app = one namespace label. kopiur-system carries it too, so

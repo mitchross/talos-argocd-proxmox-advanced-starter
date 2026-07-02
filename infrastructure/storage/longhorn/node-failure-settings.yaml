@@ -118,7 +118,7 @@ value: "true"
 ---
 # V2 (SPDK) reactor cores per node: default {"v2":"0x3"} (2 cores) -> 4 cores.
 # Added 2026-06-11 after the first V2 nuke-restore wedged: 25 concurrent
-# VolSync restores + ~40 app PVC attaches drove both SPDK targets into
+# A mass-restore wave + ~40 app PVC attaches once drove storage targets into
 # stuck teardown loops ("NVMe path still exists after delete", engines
 # desire=running stuck stopped) that survived instance-manager restarts.
 # 2 busy-poll cores could not drain the attach/detach churn on 32-core
