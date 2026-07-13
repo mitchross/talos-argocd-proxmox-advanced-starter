@@ -40,9 +40,8 @@ The Conditional Forwarder zone keeps local private records while forwarding
 missing `vanillax.xyz` records to Cloudflare. A Primary zone must not be used
 because it would return NXDOMAIN instead of forwarding missing public names.
 
-See the complete setup and cutover runbook:
-
-[`docs/domains/networking/technitium-vanillax-me-migration.md`](../../../docs/domains/networking/technitium-vanillax-me-migration.md)
+Starter setup and verification are documented in
+[`docs/networking.md`](../../../docs/networking.md).
 
 ## Route Contract
 

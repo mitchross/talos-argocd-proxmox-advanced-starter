@@ -6,7 +6,7 @@ metadata:
   name: cloudflared
   namespace: cloudflared
 spec:
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       app: cloudflared
@@ -29,7 +29,7 @@ spec:
                 topologyKey: kubernetes.io/hostname
       containers:
         - name: cloudflared
-          image: cloudflare/cloudflared:2026.6.1 # renovate: docker=cloudflare/cloudflared
+          image: cloudflare/cloudflared:2026.6.1@sha256:6d91c121b803126f7a5344005d17a9324788fc09d305b6e2560ec6040a7ae283 # renovate: docker=cloudflare/cloudflared
           imagePullPolicy: IfNotPresent
           args:
             - tunnel

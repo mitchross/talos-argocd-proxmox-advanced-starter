@@ -10,6 +10,7 @@ spec:
       kind: Gateway
       name: gateway-internal-technitium
       namespace: gateway
+      sectionName: https
   hostnames:
     - "nginx.vanillax.xyz"
   rules:

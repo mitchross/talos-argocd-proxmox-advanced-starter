@@ -25,6 +25,12 @@ Add a directory with a `kustomization.yaml`, push, deployed. One repo rule:
 **every YAML in `infrastructure/controllers/argocd/apps/` must be listed in
 that directory's `kustomization.yaml`** — unlisted files are never rendered.
 
+All four AppSets use Go templates with `missingkey=error`; bad generator data
+fails instead of producing an empty name/path. Generated Applications also use
+`FailOnSharedResource=true`, so a directory mistake cannot make two apps fight
+over one object. `my-apps/common/*` is explicitly excluded because Kustomize
+Components are mixins, not deployable Applications.
+
 ## The seven waves (and why each exists)
 
 | Wave | What | Why it must precede the next |
@@ -44,9 +50,10 @@ pattern miss both):
    [`infrastructure/controllers/argocd/values.yaml`](../infrastructure/controllers/argocd/values.yaml)
    — ArgoCD ≥1.8 doesn't assess `Application` health by default, so without
    it, app-of-apps waves are ordering theater.
-2. **Restores gate the waves.** A recreated PVC holds `Pending` until its
-   kopiur populator finishes → pod can't start → app stays `Progressing` →
-   the wave holds. On a rebuild, data restoration literally blocks the door.
+2. **Restores have explicit health.** The kopiur `Restore` health Lua reports
+   `Progressing` until hydration completes and `Degraded` on failure. The PVC
+   also remains `Pending`, so workloads cannot mount an empty volume while the
+   wave is held.
 
 ## The two backup systems (never mixed)
 
@@ -56,15 +63,21 @@ pattern miss both):
 | Mechanism | CSI snapshot → Kopia → `s3://kopiur` | base backups + WAL → `s3://postgres-backups` |
 | Restore | restore-before-bind populator ([kopiur-explained.md](kopiur-explained.md)) | `overlays/recovery` bootstrap ([cnpg-explained.md](cnpg-explained.md)) |
 
+The parent repo is testing a newer plain-Postgres + kopiur direction. It is
+intentionally absent here: the starter retains the previously proven
+CNPG/Barman flow until that migration has its own repeatable live test.
+
 ## Networking
 
-Cilium Gateway API (no Ingress anywhere): `gateway-internal` (LAN, wildcard
-cert via cert-manager DNS01), `gateway-external` (published through a
-Cloudflare tunnel). Internal DNS records are written by external-dns into
-**Technitium**; external records into Cloudflare (routes need the 3-piece
+Cilium Gateway API (no Ingress anywhere): `gateway-internal-technitium`
+(LAN, wildcard cert via cert-manager DNS01) and `gateway-external` (published
+through a Cloudflare tunnel). Internal DNS records are written by external-dns
+into **Technitium**; external records into Cloudflare (routes need the 3-piece
 contract: `external-dns: "true"` label + target annotation +
 `sectionName: https`). Services MUST name their ports (`name: http`) or
 HTTPRoutes fail silently.
+
+The complete external-system setup is in [networking.md](networking.md).
 
 ## Deep dives (parent docs)
 

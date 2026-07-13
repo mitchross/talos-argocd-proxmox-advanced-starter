@@ -36,17 +36,19 @@ cluster uses `homelab-prod`):
 | `1passwordconnect` | `1password-credentials.json` | bootstrap pre-seed |
 | `1password-operator-token` | `credential` | bootstrap pre-seed |
 | `rustfs` | `kopia_password`, `rustfs-workload-access-key`, `rustfs-workload-secret-key` | kopiur `ClusterExternalSecret` fan-out ([rustfs-setup.md](rustfs-setup.md)) + CNPG Barman `ObjectStore` |
-| `cloudflare` | API token field(s) referenced by `infrastructure/controllers/cert-manager/` + `external-dns/` | DNS01 certs, external DNS records |
-| `cloudflared` | tunnel credentials | `infrastructure/networking/cloudflared/` |
-| `technitium` | API token | external-dns internal instance (`values-technitium.yaml`) |
-| `gitea` | admin/app secrets referenced by `my-apps/development/gitea/externalsecret.yaml` | gitea |
-| `karakeep` | app secrets referenced by `my-apps/media/karakeep/karakeep/externalsecret.yaml` | karakeep |
+| `external-secrets` | `token` | rotates `external-secrets/1passwordconnect` after ESO is running |
+| `cert-manager-proxmox` | `api-token` | cert-manager DNS01 + public ExternalDNS |
+| `cloudflared-proxmox` | `credentials.json` | Cloudflare tunnel |
+| `external-dns-technitium-vanillax` | `tsig-secret` | private RFC2136 updates to Technitium |
+| `postgres-secrets` | `gitea_db_username`, `gitea_db_password` | CNPG bootstrap + Gitea connection |
+| `karakeep-secret` | `karakeep-nextauth`, `karakeep-meili`, `karakeep-webhook`, `karakeep-nextauth-public_secret` | Karakeep |
+| `grafana` | `admin-user`, `admin-password` | Grafana login |
 
 The authoritative field names live in each `externalsecret.yaml` — grep
 `remoteRef` to enumerate exactly what your vault must contain:
 
 ```bash
-grep -rn "key:\|property:" --include='externalsecret*.yaml' -A0 infrastructure my-apps | grep -A1 remoteRef
+rg -n -A2 "remoteRef:" infrastructure monitoring my-apps
 ```
 
 ## The kopiur credential fan-out (the pattern worth stealing)

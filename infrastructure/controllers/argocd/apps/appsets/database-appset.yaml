@@ -6,6 +6,11 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "4"
 spec:
+  # Strict Go templates fail generation instead of silently producing an
+  # Application with an empty name, namespace, or source path.
+  goTemplate: true
+  goTemplateOptions:
+    - missingkey=error
   # Preserve skip-reconcile annotation during DR recovery
   # Without this, the ApplicationSet controller strips manual annotations
   ignoreApplicationDifferences:
@@ -19,9 +24,9 @@ spec:
       - path: infrastructure/database/*/*
   template:
     metadata:
-      name: '{{path.basename}}'
+      name: '{{ .path.basename }}'
       annotations:
-        argocd.argoproj.io/manifest-generate-paths: '{{path}}'
+        argocd.argoproj.io/manifest-generate-paths: '{{ .path.path }}'
         argocd.argoproj.io/sync-wave: "4"
         # Server-Side Diff + IncludeMutationWebhook closes the CNPG drift gap.
         # CNPG operator uses k8s API Update (not Apply) and owns zero fields
@@ -41,10 +46,10 @@ spec:
       source:
         repoURL: https://github.com/mitchross/talos-argocd-proxmox-advanced-starter.git
         targetRevision: main
-        path: '{{path}}'
+        path: '{{ .path.path }}'
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{path.basename}}'
+        namespace: '{{ .path.basename }}'
       syncPolicy:
         automated:
           prune: true
@@ -54,7 +59,7 @@ spec:
         - CreateNamespace=true
         - ServerSideApply=true
         - RespectIgnoreDifferences=true
-        - Replace=false
+        - FailOnSharedResource=true
         retry:
           # Bounded retry — see root.yaml. Unbounded -1 plus a misbehaving
           # PreSync hook can wedge the entire app-of-apps behind a stale

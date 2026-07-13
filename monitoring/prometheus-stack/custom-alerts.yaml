@@ -67,46 +67,9 @@ spec:
           annotations:
             summary: "Node {{ $labels.instance }} has high CPU usage"
             description: "Node {{ $labels.instance }} CPU usage is above 90% (current value: {{ printf \"%.2f\" $value }}%)"
-    # ArgoCD Monitoring
-    - name: argocd.health
-      interval: 30s
-      rules:
-        - alert: ArgoCDApplicationNotSynced
-          expr: argocd_app_info{sync_status!="Synced"} > 0
-          for: 15m
-          labels:
-            severity: warning
-          annotations:
-            summary: "ArgoCD Application {{ $labels.name }} is not synced"
-            description: "ArgoCD Application {{ $labels.name }} in project {{ $labels.project }} has been out of sync for more than 15 minutes."
-        - alert: ArgoCDApplicationUnhealthy
-          expr: argocd_app_info{health_status!="Healthy",health_status!="Progressing"} > 0
-          for: 15m
-          labels:
-            severity: warning
-          annotations:
-            summary: "ArgoCD Application {{ $labels.name }} is unhealthy"
-            description: "ArgoCD Application {{ $labels.name }} in project {{ $labels.project }} is in an unhealthy state."
-    # Storage Alerts (Longhorn)
-    - name: storage.longhorn
-      interval: 30s
-      rules:
-        - alert: LonghornVolumeHealthy
-          expr: longhorn_volume_state{state!~"attached|detached"} > 0
-          for: 5m
-          labels:
-            severity: critical
-          annotations:
-            summary: "Longhorn volume {{ $labels.volume }} is unhealthy"
-            description: "Longhorn volume {{ $labels.volume }} is in state {{ $labels.state }}"
-        - alert: LonghornNodeStorageSpaceLow
-          expr: (longhorn_node_storage_usage_bytes / longhorn_node_storage_capacity_bytes) * 100 > 90
-          for: 5m
-          labels:
-            severity: warning
-          annotations:
-            summary: "Longhorn node {{ $labels.node }} storage space is low"
-            description: "Longhorn node {{ $labels.node }} storage usage is above 90% (current value: {{ printf \"%.2f\" $value }}%)"
+    # ArgoCD alerts live in argocd-sync-alerts.yaml. Longhorn alerts live in
+    # longhorn-backup-alerts.yaml; keeping simpler copies here caused duplicate
+    # pages and weaker state coverage.
     # Prometheus Stack Health
     - name: monitoring.stack.health
       interval: 30s

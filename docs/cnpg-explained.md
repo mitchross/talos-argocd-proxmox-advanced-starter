@@ -8,6 +8,12 @@ kopiur's file-level PVC backups. The demo database is gitea's, at
 [beginner guide](https://mitchross.github.io/talos-argocd-proxmox/domains/cnpg/backup-restore-start-guide/)
 covers the same ground with more diagrams.)
 
+> **Starter boundary (July 2026):** the parent repo is migrating selected
+> workloads toward plain Postgres + kopiur. That newer path is intentionally
+> not copied here yet. CNPG/Barman remains the tutorial database example until
+> the replacement has a recorded end-to-end backup and destructive restore
+> test.
+
 ## How backups work
 
 Two things run continuously:
@@ -19,6 +25,10 @@ Two things run continuously:
 
 Base backup + WAL = **point-in-time recovery**: CNPG loads the last base
 backup, then replays the journal forward.
+
+Within the database Application, Argo applies the credential ExternalSecret
+at wave `-7`, ObjectStore at `-6`, Cluster at `-5`, and ScheduledBackup at
+`-4`. The database never races its secret or backup destination.
 
 > **Never** add kopiur CRs to a CNPG PVC. A filesystem snapshot of a running
 > Postgres is crash-consistent at best; Barman is transaction-aware. Two
@@ -64,9 +74,11 @@ The database's `kustomization.yaml` activates exactly one overlay:
 
 ## Why the database AppSet has `selfHeal: false`
 
-During DR you annotate/patch live CNPG objects; `selfHeal: true` would
-strip those manual changes mid-recovery. The trade: normal drift isn't
-auto-corrected for databases — deliberate.
+During DR you may annotate/patch live CNPG objects; `selfHeal: true` would
+strip those manual changes mid-recovery. Automated sync of new Git revisions
+is still enabled. The trade is that live drift is not auto-corrected for
+databases; deliberate DR operations should be monitored and reconciled back
+to Git.
 
 ## Gotchas
 

@@ -2,8 +2,9 @@
 
 [kopiur](https://github.com/home-operations/kopiur) is a Kopia-native backup
 operator: you declare small CRs, it runs mover Jobs, Kopia encrypts +
-deduplicates + ships bytes to S3. This kit uses it for every stateful demo
-volume. The deep narrative lives in the parent cluster's docs — start with
+deduplicates + ships bytes to S3. This kit uses it for ordinary application
+PVCs that need file-level recovery. CNPG uses Barman, and derived data may be
+explicitly exempt. The deep narrative lives in the parent cluster's docs — start with
 **[the easy guide](https://mitchross.github.io/talos-argocd-proxmox/easy-guide/)**
 and poke the state machine yourself in
 **[the interactive playground](https://mitchross.github.io/talos-argocd-proxmox/kopiur-playground/)**.
@@ -58,6 +59,7 @@ Drill it (this is also getting-started's final step):
 
 ```bash
 kubectl -n karakeep get snapshot                       # Completed, non-zero files
+kubectl -n karakeep get secret kopiur-rustfs           # credential fan-out works
 kubectl -n karakeep scale deploy/karakeep-web --replicas=0
 kubectl -n karakeep delete pvc data-pvc
 kubectl -n karakeep get pvc data-pvc -w                # Pending → Bound (with data)
@@ -74,7 +76,7 @@ mover `securityContext` to the uid:gid that owns the data
 
 ## What kopiur is NOT for
 
-**Databases.** Postgres gets SQL-aware backups via CNPG + Barman to a
+**CNPG databases.** Postgres in this starter gets SQL-aware backups via CNPG + Barman to a
 separate bucket — never kopiur filesystem snapshots. See
 [cnpg-explained.md](cnpg-explained.md). One repo, two backup systems, zero
 overlap.

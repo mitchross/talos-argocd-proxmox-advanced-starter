@@ -27,9 +27,9 @@ no attempt to shim them away:
 | **Cloudflare** account + a domain | DNS01 certs, external-dns, tunnel for external routes |
 
 No sealed-secrets fallback, no in-cluster MinIO, no demo shims. Working
-values (`vanillax.xyz`, a LAN S3 endpoint) ship in-tree so you can see a
-real configuration; swapping in yours is a
-[5-value find-and-replace](docs/adapting-to-your-cluster.md).
+values (`vanillax.xyz`, a LAN S3 endpoint, DNS and Gateway addresses) ship
+in-tree so you can see a real configuration; the adaptation script replaces
+the complete example profile ([guide](docs/adapting-to-your-cluster.md)).
 
 ## The dependency ladder (why these three apps)
 
@@ -47,6 +47,10 @@ Each demo app exists to force one layer of the platform into the tree:
 bootstrap-argocd.sh (once) → root Application → projects + 4 ApplicationSets
                                                 → every directory = an app
 ```
+
+The ApplicationSets use strict Go templates (`missingkey=error`) and
+`FailOnSharedResource=true`: malformed generator data fails closed, and two
+Applications cannot silently take ownership of the same Kubernetes object.
 
 Deployment order is governed by **sync waves** — each wave must be Synced
 *and Healthy* before the next:
@@ -96,7 +100,7 @@ kubectl apply -f infrastructure/controllers/argocd/ns.yaml
 
 helm upgrade --install argocd argo-cd \
   --repo https://argoproj.github.io/argo-helm \
-  --version 10.0.0 \
+  --version 10.1.3 \
   --namespace argocd \
   --values infrastructure/controllers/argocd/values.yaml \
   --wait --timeout 10m
@@ -113,6 +117,7 @@ kubectl apply -f infrastructure/controllers/argocd/root.yaml
 |---|---|
 | [getting-started.md](docs/getting-started.md) | provision → bootstrap → verify → restore drill |
 | [architecture.md](docs/architecture.md) | waves, AppSets, gating, the two backup systems |
+| [networking.md](docs/networking.md) | Technitium private DNS, Cloudflare public DNS/tunnel, Gateway contracts |
 | [kopiur-explained.md](docs/kopiur-explained.md) | restore-before-bind, the component/stub split, the mover-UID gotcha |
 | [rustfs-setup.md](docs/rustfs-setup.md) | the one-time S3 backend setup |
 | [cnpg-explained.md](docs/cnpg-explained.md) | Postgres backup/restore, lineages, the one feature flag |
@@ -129,7 +134,7 @@ kopiur without the rest of this stack).
 
 Talos `v1.13.5` (with the mandatory `machine.install.disk` patch) · Omni
 `v1.9.0` · Kubernetes `v1.36.x` · Cilium `1.19.5` · Gateway API `v1.4.1`
-(intentional — don't outrun Cilium) · ArgoCD Helm chart `10.x` ·
+(intentional — don't outrun Cilium) · ArgoCD `v3.4.5` / Helm chart `10.1.3` ·
 kube-prometheus-stack `87.x` · images SHA-pinned, Renovate-managed.
 
 ## Lineage

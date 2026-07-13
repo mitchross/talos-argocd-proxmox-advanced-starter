@@ -55,7 +55,7 @@ metadata:
   finalizers:
   - resources-finalizer.argocd.argoproj.io
 spec:
-  description: "Monitoring and observability stack (Prometheus, Grafana, Loki)."
+  description: "Monitoring stack (Prometheus, Alertmanager, and Grafana)."
   sourceRepos:
   - https://github.com/mitchross/talos-argocd-proxmox-advanced-starter.git
   destinations:

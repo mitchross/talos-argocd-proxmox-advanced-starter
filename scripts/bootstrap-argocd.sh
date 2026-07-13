@@ -23,7 +23,8 @@ EXPECTED_CILIUM_VERSION="$(awk '
     print version
   }
 ' "$ROOT_DIR/infrastructure/networking/cilium/kustomization.yaml")"
-EXPECTED_CILIUM_CLUSTER_NAME="talos-singlenode-gpu-prod"
+EXPECTED_CILIUM_CLUSTER_NAME="$(awk '$1 == "name:" { print $2; exit }' \
+  "$ROOT_DIR/infrastructure/networking/cilium/values.yaml")"
 
 if command -v cilium > /dev/null 2>&1; then
   CILIUM_CMD="cilium"
@@ -118,15 +119,13 @@ fi
 # Step 2: Install ArgoCD using Helm
 echo ""
 echo "⎈ Installing ArgoCD via Helm..."
-# shellcheck disable=SC2016 # The bcrypt hash must remain literal.
 if ! helm upgrade --install argocd argo-cd \
   --repo https://argoproj.github.io/argo-helm \
-  --version 10.0.0 \
+  --version 10.1.3 \
   --namespace argocd \
   --values "$ROOT_DIR/infrastructure/controllers/argocd/values.yaml" \
   --wait \
-  --timeout 10m \
-  --set 'configs.secret.argocdServerAdminPassword=$2a$10$KjM2oz7Et5Ai9JLB4mry6.rfFF0IJfCWuaD2XJ/2sr6oQGcszf8cO'; then
+  --timeout 10m; then
   # On a RE-RUN over an already-running ArgoCD, helm can fail with a
   # server-side-apply conflict on argocd-secret (.data.admin.passwordMtime is
   # owned by argocd-server once the admin password is used). That's benign:
@@ -167,9 +166,9 @@ echo "   Wave 0: Cilium (networking), 1Password Connect, External Secrets"
 echo "   Wave 1: cert-manager, Longhorn (storage), Snapshot Controller"
 echo "   Wave 2: kopiur operator (Kopia-native backup operator + volume populator)"
 echo "   Wave 3: CNPG Barman Plugin + kopiur config (ClusterRepository, cred fanout, snapclass)"
-echo "   Wave 4: Infrastructure AppSet (GPU operators, gateway, etc.) + Database AppSet"
-echo "   Wave 5: OTEL Operator + Monitoring AppSet (Prometheus, Grafana, Loki)"
-echo "   Wave 6: Observability overlays + My-Apps AppSet (user workloads)"
+echo "   Wave 4: Infrastructure AppSet (external-dns, cloudflared, gateway) + Database AppSet"
+echo "   Wave 5: Monitoring AppSet (Prometheus + Grafana)"
+echo "   Wave 6: My-Apps AppSet (nginx, karakeep, gitea)"
 echo ""
 echo "🔍 Monitor progress with:"
 echo "   kubectl get applications -n argocd -w"
@@ -178,5 +177,6 @@ echo "🌐 Access ArgoCD UI:"
 echo "   kubectl port-forward svc/argocd-server -n argocd 8080:443"
 echo "   Open: https://localhost:8080"
 echo ""
-echo "🔑 Admin password is pre-configured via Helm values (no initial-admin-secret needed)"
+echo "🔑 Initial admin password:"
+echo "   kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d; echo"
 echo ""

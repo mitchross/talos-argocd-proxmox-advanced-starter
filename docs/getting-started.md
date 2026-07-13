@@ -37,8 +37,8 @@ kubectl get nodes    # NotReady until Cilium lands — expected
   `postgres-backups`, one workload access key scoped to both.
 - **1Password**: create the vault items listed in
   [secret-management.md](secret-management.md).
-- **Cloudflare**: an API token (cert-manager DNS01 + external-dns) and a
-  tunnel for external routes (`infrastructure/networking/cloudflared/`).
+- **Networking**: configure the Technitium RFC2136 zone/TSIG key and the
+  Cloudflare API token/tunnel in [networking.md](networking.md).
 
 ## 3. Bootstrap the GitOps stack
 
@@ -76,6 +76,9 @@ kubectl create secret generic 1passwordconnect -n external-secrets \
 ./scripts/bootstrap-argocd.sh
 ```
 
+The script prints the command that reads Argo CD's generated initial admin
+password. No shared password is committed to this repository.
+
 ## 4. Watch the waves walk
 
 ```bash
@@ -88,12 +91,23 @@ Wave 0 (network, secrets) → 1 (certs, storage) → 2 (kopiur operator) →
 6 (the demo apps). Every wave must be Synced **and Healthy** before the
 next starts — [architecture.md](architecture.md) explains the gating.
 
-## 5. Prove it worked: the karakeep restore drill
-
-The kit isn't "up" until a restore has succeeded. Once karakeep runs and
-has a `Completed` snapshot (`kubectl -n karakeep get snapshot`):
+Before the restore drill, verify both routing paths and the secret chain:
 
 ```bash
+kubectl get clustersecretstore 1password
+kubectl get externalsecret -A
+dig @<technitium-ip> nginx.<domain> +short
+curl -I https://gitea.<domain>
+```
+
+## 5. Prove it worked: the karakeep restore drill
+
+The kit isn't "up" until a restore has succeeded. First confirm a recent
+`Completed` snapshot with non-zero file/byte counts and the fanned-out secret:
+
+```bash
+kubectl -n karakeep get snapshot
+kubectl -n karakeep get secret kopiur-rustfs
 kubectl -n karakeep scale deploy/karakeep-web --replicas=0
 kubectl -n karakeep delete pvc data-pvc
 kubectl -n karakeep get pvc data-pvc -w

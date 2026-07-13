@@ -25,6 +25,19 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: cluster-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Match the binaries bundled in Argo CD v3.4.5. Renderer changes are
+  # deployment changes when Kustomize inflates Helm charts.
+  KUSTOMIZE_VERSION: 5.8.1
+  HELM_VERSION: 3.19.4
+  KUBECONFORM_VERSION: v0.7.0
+  KUBERNETES_VERSION: 1.36.2
+  PROMETHEUS_VERSION: 3.12.0
+
 jobs:
   argocd-structure:
     name: ArgoCD Structure Validation
@@ -36,6 +49,9 @@ jobs:
       - name: Validate ArgoCD app topology
         run: bash ./scripts/validate-argocd-apps.sh
 
+      - name: Validate immutable image references
+        run: bash ./scripts/validate-image-pins.sh
+
   render-and-schema:
     name: Kustomize Render and Schema Validation
     runs-on: ubuntu-latest
@@ -46,21 +62,34 @@ jobs:
       - name: Setup Kustomize
         uses: imranismail/setup-kustomize@v2
         with:
-          kustomize-version: 5.4.2
+          kustomize-version: ${{ env.KUSTOMIZE_VERSION }}
 
       - name: Setup Helm
         uses: azure/setup-helm@v4
         with:
-          version: v3.16.2
+          version: v${{ env.HELM_VERSION }}
 
       - name: Install kubeconform
         run: |
           set -euo pipefail
-          KUBECONFORM_VERSION="v0.6.7"
           curl -sSL -o /tmp/kubeconform.tar.gz "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz"
           tar -xzf /tmp/kubeconform.tar.gz -C /tmp
           sudo mv /tmp/kubeconform /usr/local/bin/kubeconform
           kubeconform -v
+
+      - name: Install promtool
+        run: |
+          set -euo pipefail
+          curl -sSL -o /tmp/prometheus.tar.gz "https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz"
+          tar -xzf /tmp/prometheus.tar.gz -C /tmp
+          sudo mv "/tmp/prometheus-${PROMETHEUS_VERSION}.linux-amd64/promtool" /usr/local/bin/promtool
+          promtool --version
+
+      - name: Validate starter Prometheus rules
+        run: |
+          set -euo pipefail
+          python3 -c "import yaml" 2>/dev/null || pip3 install --quiet pyyaml
+          python3 ./scripts/validate-prometheus-rules.py
 
       - name: Render all kustomizations
         run: |
@@ -75,7 +104,20 @@ jobs:
           : > /tmp/all-manifests.yaml
           for dir in "${dirs[@]}"; do
             echo "Rendering ${dir}"
-            kustomize build "${dir}" --enable-helm >> /tmp/all-manifests.yaml
+            rendered="$(mktemp)"
+            kustomize build "${dir}" --enable-helm > "${rendered}"
+
+            if ! grep -q '^kind:' "${rendered}"; then
+              if grep -q '^kind: Component$' "${dir}/kustomization.yaml"; then
+                echo "Expected empty Component render: ${dir}"
+              else
+                echo "ERROR: ${dir} rendered zero Kubernetes objects"
+                exit 1
+              fi
+            fi
+
+            cat "${rendered}" >> /tmp/all-manifests.yaml
+            rm -f "${rendered}"
             echo "---" >> /tmp/all-manifests.yaml
           done
 
@@ -97,7 +139,9 @@ jobs:
 
           kubeconform \
             -summary \
+            -strict \
             -ignore-missing-schemas \
+            -kubernetes-version "${KUBERNETES_VERSION}" \
             -schema-location default \
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
             /tmp/filtered-manifests.yaml
@@ -105,7 +149,8 @@ jobs:
       - name: Validate kopiur backup coverage
         # Replaces the retired pvc-plumber validate-restore-contract.sh and the
         # backup-exempt-contract job. Runs on the RENDERED stream so Helm-rendered
-        # PVCs (gitea, tubesync) are covered. Hard-fails when a backed-up PVC is
+        # PVCs such as Gitea's chart-generated claim are covered. Hard-fails
+        # when a backed-up PVC is
         # missing its dataSourceRef (recreates EMPTY in DR) or a backed-up namespace
         # lacks the kopiur.home-operations.com/repo label (repo creds won't fan in);
         # warns on missing mover securityContext, uncovered+unexempt PVCs, and
@@ -114,6 +159,11 @@ jobs:
           set -euo pipefail
           python3 -c "import yaml" 2>/dev/null || pip3 install --quiet pyyaml
           python3 ./scripts/validate-kopiur-coverage.py /tmp/all-manifests.yaml
+
+      - name: Validate Gateway API contracts
+        run: |
+          set -euo pipefail
+          python3 ./scripts/validate-gateway-contracts.py /tmp/all-manifests.yaml
 
   # backup-exempt-contract job RETIRED 2026-06-27 (pvc-plumber removed). It
   # hard-failed on the bare `backup-exempt-reason` key because pvc-plumber denied
@@ -151,9 +201,8 @@ jobs:
           npx --yes --package=renovate renovate-config-validator --strict .github/renovate.json5
 
   shellcheck:
-    name: Shell Script Lint (Informational)
+    name: Shell Script Lint
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4

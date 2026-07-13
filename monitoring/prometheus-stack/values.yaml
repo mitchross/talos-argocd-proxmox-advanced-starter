@@ -179,15 +179,20 @@ alertmanager:
       fsGroup: 65534
     # Retention
     retention: 72h
-    # Configuration for alert routing (placeholder)
+    # Alert rules remain visible in Prometheus, Grafana, and Alertmanager.
+    # Delivery stays on the chart's null receiver until the adopter configures
+    # a real destination; do not ship localhost placeholders that discard it.
     configSecret: ""
 # Grafana Configuration
 grafana:
   enabled: true
   deploymentStrategy:
     type: Recreate
-  # Admin credentials
-  adminPassword: "prom-operator"
+  # Admin credentials come from 1Password through ESO.
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
   # Persistence
   persistence:
     enabled: true

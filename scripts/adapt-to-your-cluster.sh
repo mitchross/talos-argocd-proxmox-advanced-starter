@@ -13,7 +13,15 @@ DRY_RUN=0
 SWAPS=(
   "vanillax.xyz|Your apps domain (Cloudflare-managed), e.g. lab.example.com"
   "github.com/mitchross/talos-argocd-proxmox-advanced-starter|Your fork, e.g. github.com/you/talos-argocd-proxmox-advanced-starter"
-  "192.168.10.133:30292|Your S3 endpoint as bare host:port (see docs/rustfs-setup.md)"
+  "192.168.10.133|Your off-cluster S3 host or IP"
+  "30292|Your off-cluster S3 API port"
+  "192.168.10.15|Your Technitium DNS server IP"
+  "192.168.10.52|The internal Gateway IP from your Cilium LoadBalancer pool"
+  "192.168.10.32/27|Your Cilium LoadBalancer pool CIDR"
+  "talos-singlenode-gpu-prod|Your Cilium cluster name"
+  "__REPLACE_ME_NODE_CIDR__|Your Talos node CIDR, e.g. 192.168.10.0/24"
+  "homelab-prod|Your 1Password vault name"
+  "threadripper|Your Cloudflare tunnel name"
 )
 
 files_matching() {
@@ -41,7 +49,8 @@ done
 
 echo
 echo "Remaining manual steps (docs/adapting-to-your-cluster.md):"
-echo "  - 1Password vault/item names: grep -rn remoteRef --include='externalsecret*.yaml' ."
-echo "  - Cluster name + hardware in omni/cluster-template/ and omni/machine-classes/"
+echo "  - Technitium TSIG key/item names and ExternalDNS owner IDs"
+echo "  - 1Password item names, if you do not use the documented defaults"
+echo "  - Omni cluster name, machine sizing, storage pool, and hardware"
 echo "  - Review: git diff   — substitution is global, check every hunk"
 echo "  - Commit AND PUSH your fork: ArgoCD deploys the remote main, not this checkout"

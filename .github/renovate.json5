@@ -27,15 +27,6 @@
   // firehose during chart-release weeks.
   prHourlyLimit: 3,
 
-  // Rate-limit + retry tuning for the docker datasource. abortOnError:
-  // false keeps Renovate going through transient registry errors;
-  // abortIgnoreStatusCodes: [429] tells it to keep going (instead of
-  // aborting) when Docker Hub rate-limits — the registry is throttling,
-  // not erroring, and the next scheduled run will catch up. See
-  // dockerhub-rate-limit-mitigation.md for the full rationale.
-  abortOnError: false,
-  abortIgnoreStatusCodes: [429],
-
   // Stable identifier in PR titles + Dependency Dashboard. Default is
   // fine but explicit is better.
   dependencyDashboard: true,
@@ -53,14 +44,14 @@
   argocd: {
     managerFilePatterns: [
       '/^infrastructure/.+\\.yaml$/',
-      '/^apps/.+\\.yaml$/',
+      '/^my-apps/.+\\.yaml$/',
       '/^monitoring/.+\\.yaml$/',
     ],
   },
   kubernetes: {
     managerFilePatterns: [
       '/^infrastructure/.+\\.yaml$/',
-      '/^apps/.+\\.yaml$/',
+      '/^my-apps/.+\\.yaml$/',
       '/^monitoring/.+\\.yaml$/',
     ],
   },
@@ -68,7 +59,7 @@
     managerFilePatterns: [
       '/^infrastructure/.+/values\\.yaml$/',
       '/^monitoring/.+/values\\.yaml$/',
-      '/^apps/.+/values\\.yaml$/',
+      '/^my-apps/.+/values\\.yaml$/',
     ],
   },
   kustomize: {
@@ -169,11 +160,11 @@
     {
       description: 'Schedule Docker Hub lookups daily to avoid rate-limit blowouts.',
       matchDatasources: ['docker'],
-      matchPackagePatterns: [
-        '^docker\\.io/',
+      matchPackageNames: [
+        '/^docker\\.io\\//',
         // Bare names like "busybox", "nginx", "redis" — Renovate routes
         // these to docker.io by default.
-        '^[a-z0-9_-]+(/[a-z0-9_-]+)?$',
+        '/^[a-z0-9_-]+(\\/[a-z0-9_-]+)?$/',
       ],
       schedule: ['after 9am and before 5pm every weekday'],
     },
@@ -227,7 +218,7 @@
   //     description: 'in-cluster registry images — route through custom.your-registry to bypass pagination mismatch.',
   //     customType: 'regex',
   //     managerFilePatterns: [
-  //       '/^apps/.+\\.yaml$/',
+  //       '/^my-apps/.+\\.yaml$/',
   //     ],
   //     matchStrings: [
   //       'image:\\s*registry\\.example\\.com/(?<packageName>[\\w._-]+):(?<currentValue>v[\\w.-]+)',
@@ -277,7 +268,7 @@
     // CNPG Cluster CRD — image lives in `spec.imageName`, not the
     // standard k8s `image:` field. The default `kubernetes` manager
     // pattern keys on `image:` lines and silently skips imageName, so
-    // the postgres-demo Cluster manifest would never get a Renovate
+    // the CNPG Cluster manifest would never get a Renovate
     // PR for postgresql tag/digest bumps without this customManager.
     //
     // Pattern matches:
@@ -291,7 +282,7 @@
       description: 'CNPG postgresql image (spec.imageName, not standard image:)',
       customType: 'regex',
       managerFilePatterns: [
-        '/^apps/.+/cluster\\.yaml$/',
+        '/^my-apps/.+/cluster\\.yaml$/',
         '/^infrastructure/.+/cluster\\.yaml$/',
       ],
       matchStrings: [

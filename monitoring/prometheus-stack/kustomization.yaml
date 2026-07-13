@@ -3,6 +3,7 @@ kind: Kustomization
 namespace: prometheus-stack
 resources:
   - ns.yaml
+  - grafana-admin-external-secret.yaml
   - alertmanager-http-route.yaml
   - grafana-http-route.yaml
   - prometheus-http-route.yaml
@@ -11,10 +12,6 @@ resources:
   - argocd-sync-alerts.yaml # ArgoCD control-plane + app-state alerts
   - etcd-dashboard.yaml # etcd cluster dashboard (Grafana 3070; pairs with kube-etcd scrape job)
   - network-policy.yaml # Allow Grafana to access Prometheus
-# Strategic merge patches to handle resource conflicts
-patchesStrategicMerge:
-  - alertmanager-config.yaml
-
 # Per-CRD sync-options — kube-prometheus-stack ships several CRDs whose
 # OpenAPI schemas are large enough that ArgoCD's default client-side apply
 # tries to write a `kubectl.kubernetes.io/last-applied-configuration`

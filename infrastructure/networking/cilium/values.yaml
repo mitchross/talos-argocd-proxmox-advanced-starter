@@ -1,4 +1,4 @@
-# Cilium Helm Values for Talos single-node GPU production cluster
+# Cilium Helm values for the starter Talos cluster
 # ArgoCD Sync Wave: 0 (Foundation - must deploy before everything else)
 annotations:
   argocd.argoproj.io/sync-wave: "0"
@@ -118,19 +118,16 @@ resources:
 
 # Hubble (Observability)
 hubble:
-  enabled: true 
-  # Performance: increase event queue to prevent drops under load
-  eventQueueSize: 16384
+  # Hubble is useful but not part of this starter's dependency closure.
+  enabled: false
   relay:
-    enabled: true
+    enabled: false
   ui:
-    enabled: true
+    enabled: false
 
 # Operator Configuration
 operator:
-  # SINGLE-NODE: the required hostname anti-affinity below makes a 2nd operator
-  # replica permanently unschedulable (no 2nd host) -> the Deployment never goes
-  # 2/2 healthy and the Cilium ArgoCD app hangs Progressing. 1 replica on one node.
+  # One replica keeps the starter small. Increase only after nodes span hosts.
   replicas: 1
   resources:
     requests:

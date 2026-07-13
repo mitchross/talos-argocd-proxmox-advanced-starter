@@ -53,7 +53,7 @@ while IFS= read -r appset; do
     appset_path=$(echo "$appset_path" | sed 's/.*path: //' | tr -d "'\"" | xargs)
     [ -z "$appset_path" ] && continue
 
-    # The generated Application name is {{path.basename}}
+    # The generated Application name is {{ .path.basename }}
     generated_name=$(basename "$appset_path")
 
     # Check if this name conflicts with a standalone Application
@@ -87,8 +87,11 @@ while IFS= read -r f; do
   fi
 done < <(app_yaml_files)
 
-# Sort and deduplicate
-mapfile -t sorted_waves < <(printf '%s\n' "${waves[@]}" | sort -n | uniq)
+# Sort and deduplicate without `mapfile`, which is absent from macOS Bash 3.2.
+sorted_waves=()
+while IFS= read -r wave; do
+  sorted_waves+=("$wave")
+done < <(printf '%s\n' "${waves[@]}" | sort -n | uniq)
 echo "  Waves found: ${sorted_waves[*]}"
 
 # Check for gaps > 1 between consecutive waves
@@ -240,6 +243,30 @@ if [ -f "$my_apps_appset" ] && [ -f "$project_nomad_path/kustomization.yaml" ]; 
     echo "  OK: Project Nomad is managed as one bundled my-apps Application"
   fi
 fi
+echo ""
+
+# ─────────────────────────────────────────────
+# 8. Kustomize Component dirs must be excluded from AppSet discovery.
+# A Component builds to an empty stream by itself; discovering one creates a
+# phantom zero-resource Application.
+# ─────────────────────────────────────────────
+echo "--- Check 8: Component dirs excluded from my-apps AppSet ---"
+
+my_apps_appset="$APPS_DIR/appsets/my-apps-appset.yaml"
+while IFS= read -r comp_kust; do
+  comp_dir=$(dirname "$comp_kust")
+  depth=$(echo "$comp_dir" | awk -F/ '{print NF}')
+  [ "$depth" -ne 3 ] && continue
+  parent_glob="$(dirname "$comp_dir")/*"
+  if grep -A1 "path: $parent_glob" "$my_apps_appset" 2>/dev/null | grep -q "exclude: true" \
+     || grep -A1 "path: $comp_dir" "$my_apps_appset" 2>/dev/null | grep -q "exclude: true"; then
+    echo "  OK: $comp_dir (kind: Component) is excluded from discovery"
+  else
+    echo "  ERROR: $comp_dir has a 'kind: Component' kustomization but is discovered by my-apps/*/*"
+    echo "         Add an 'exclude: true' entry for it (or its parent glob) in $my_apps_appset."
+    ERRORS=$((ERRORS + 1))
+  fi
+done < <(grep -rl "^kind: Component$" my-apps --include=kustomization.yaml 2>/dev/null | sort)
 echo ""
 
 # ─────────────────────────────────────────────

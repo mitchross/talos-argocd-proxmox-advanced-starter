@@ -3,7 +3,7 @@ kind: CiliumClusterwideNetworkPolicy
 metadata:
   name: default-deny-lan-egress
 spec:
-  description: "Block pods from accessing LAN - allow internet, cluster, and whitelisted storage"
+  description: "Block pod LAN access except the starter's S3 backup endpoint"
   endpointSelector: {}  # Applies to ALL pods
 
   # ============================================
@@ -43,76 +43,12 @@ spec:
     - toCIDR:
         - 192.168.10.32/27
 
-    # NOTE: Gateway (192.168.10.1) NOT whitelisted
-    # Internet works via toEntities:host, no direct gateway access needed
-    # This prevents pods from accessing router admin/SSH
-
     # ============================================
-    # ALLOW: TrueNAS - API + NFS + SMB + RustFS Storage
-    # (NFS/SMB shares, RustFS S3 for kopiur backups)
+    # ALLOW: off-cluster RustFS/S3 used by kopiur and CNPG/Barman
     # ============================================
     - toCIDR:
         - 192.168.10.133/32
       toPorts:
         - ports:
-            - port: "443"
-              protocol: TCP
-            - port: "2049"
-              protocol: TCP
-            - port: "111"
-              protocol: TCP
-            - port: "111"
-              protocol: UDP
-            - port: "445"
-              protocol: TCP
             - port: "30292"
-              protocol: TCP
-            - port: "30293"
-              protocol: TCP
-            - port: "9000"
-              protocol: TCP
-
-    # ============================================
-    # ALLOW: Wyze Bridge RTSP (for Frigate)
-    # ============================================
-    - toCIDR:
-        - 192.168.10.46/32
-      toPorts:
-        - ports:
-            - port: "8554"
-              protocol: TCP
-
-    # ============================================
-    # ALLOW: Proxmox API (for Omni provider)
-    # Remove if not using Omni/Terraform in-cluster
-    # ============================================
-    - toCIDR:
-        - 192.168.10.14/32
-      toPorts:
-        - ports:
-            - port: "8006"
-              protocol: TCP
-
-    # ============================================
-    # ALLOW: RPi4 Solar MPPT Monitor (Prometheus scrape)
-    # ============================================
-    - toCIDR:
-        - 192.168.10.174/32
-      toPorts:
-        - ports:
-            - port: "8080"
-              protocol: TCP
-            - port: "9812"
-              protocol: TCP
-
-    # ============================================
-    # ALLOW: IoT VLAN Egress (Tapo Smart Plugs)
-    # ============================================
-    - toCIDR:
-        - 192.168.101.0/24
-      toPorts:
-        - ports:
-            - port: "80"
-              protocol: TCP
-            - port: "443"
               protocol: TCP

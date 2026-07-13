@@ -30,7 +30,8 @@ spec:
     - name: argocd.controlplane
       rules:
         # Any ArgoCD component scrape target down (controller, repo-server, server,
-        # applicationset, notifications). If the controller is down, NOTHING syncs.
+        # applicationset). If the controller is down, NOTHING syncs. The
+        # notifications controller is disabled until delivery is configured.
         - alert: ArgoCDComponentDown
           expr: up{namespace="argocd"} == 0
           for: 5m
@@ -81,10 +82,9 @@ spec:
 
     - name: argocd.appstate
       rules:
-        # Drift ArgoCD CAN see but is not auto-correcting. Scoped to apps with
-        # automated sync ENABLED — databases and other DR apps intentionally run
-        # autosync_enabled="false" and may sit OutOfSync legitimately during
-        # recovery, so they are excluded to avoid permanent false alerts.
+        # Drift ArgoCD sees in an Application with automated sync enabled.
+        # Database apps also export autosync_enabled="true": selfHeal=false
+        # disables live-drift correction, not sync of new Git revisions.
         - alert: ArgoCDAppOutOfSync
           expr: argocd_app_info{sync_status="OutOfSync", autosync_enabled="true"} == 1
           for: 15m
@@ -97,8 +97,9 @@ spec:
             description: |
               Application {{ $labels.name }} (project {{ $labels.project }},
               dest ns {{ $labels.dest_namespace }}) has automated sync enabled but
-              has been OutOfSync for 15m. Auto-sync/selfHeal is failing to converge
-              — usually a sync error, an immutable-field conflict, or a hook stuck.
+              has been OutOfSync for 15m. Automated convergence is failing or
+              live drift is awaiting operator action — usually a sync error, an
+              immutable-field conflict, or a hook stuck.
 
               Actions:
               1. kubectl describe application {{ $labels.name }} -n argocd
@@ -106,6 +107,22 @@ spec:
               3. Try a hard refresh:
                  kubectl annotate application {{ $labels.name }} -n argocd \
                    argocd.argoproj.io/refresh=hard --overwrite
+
+        # Comparison and render failures report sync_status=Unknown rather than
+        # OutOfSync, so they need explicit coverage.
+        - alert: ArgoCDAppSyncUnknown
+          expr: argocd_app_info{sync_status="Unknown"} == 1
+          for: 10m
+          labels:
+            severity: critical
+            component: argocd
+            category: gitops
+          annotations:
+            summary: "ArgoCD cannot determine sync status: {{ $labels.name }}"
+            description: |
+              Application {{ $labels.name }} has reported sync status Unknown for
+              10m. Inspect .status.conditions and repo-server logs for manifest,
+              repository, discovery, or diff errors.
 
         # Real resource health failure (CrashLoop, failed Job, unhealthy CR, etc.).
         - alert: ArgoCDAppDegraded
@@ -126,6 +143,22 @@ spec:
               1. kubectl get application {{ $labels.name }} -n argocd -o json \
                  | jq '.status.resources[] | select(.health.status=="Degraded")'
               2. Inspect the degraded workload in dest ns {{ $labels.dest_namespace }}.
+
+        # These states are unhealthy but are not covered by Degraded.
+        - alert: ArgoCDAppHealthAbnormal
+          expr: argocd_app_info{health_status=~"Missing|Unknown|Suspended"} == 1
+          for: 15m
+          labels:
+            severity: warning
+            component: argocd
+            category: gitops
+          annotations:
+            summary: "ArgoCD app health {{ $labels.health_status }}: {{ $labels.name }}"
+            description: |
+              Application {{ $labels.name }} (project {{ $labels.project }}) has
+              reported {{ $labels.health_status }} health for 15m. Inspect its
+              resources and conditions for a missing, undiscovered, or suspended
+              managed resource.
 
         # Rollout that never settles. A healthy deploy passes through Progressing
         # briefly; 30m of Progressing means a stuck rollout (image pull, probe

@@ -42,6 +42,9 @@ talos-bootstrap-state/
 # deliverable. Quick rationale-capture as each phase lands; not committed.
 .compare-notes.md
 
+# Private recording scripts and production notes
+/video-notes/
+
 # Test artifacts
 *.test
 coverage.out

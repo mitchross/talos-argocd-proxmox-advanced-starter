@@ -14,17 +14,13 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: cloudnative-pg
-commonLabels:
-  app.kubernetes.io/name: gitea-db
-  app.kubernetes.io/managed-by: argocd
-commonAnnotations:
-  argocd.argoproj.io/sync-wave: "-5"
+labels:
+  - pairs:
+      app.kubernetes.io/name: gitea-db
+      app.kubernetes.io/managed-by: argocd
+    includeSelectors: true
 resources:
-  # - overlays/recovery      # DR-only: restore gitea DB FROM v9 → write v10.
-                             # Before a planned nuke, bump base serverName and
-                             # set this overlay's source, then re-enable.
-  - overlays/initdb          # ← ACTIVE (steady state; recovery completed
-                             # 2026-06-28). bootstrap.initdb is a no-op on the
-                             # existing cluster; writes forward to base v10.
+  # - overlays/recovery      # DR-only: read vN, write forward to vN+1.
+  - overlays/initdb          # ACTIVE: fresh starter writes to lineage v1.
   - externalsecret.yaml
   - scheduled-backup.yaml
