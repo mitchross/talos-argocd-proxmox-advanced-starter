@@ -24,12 +24,12 @@ Custom resource health Lua scripts in `argocd-cm`:
   fix the status struct. Working around it with Lua removes upstream's
   motivation to do the right thing.
 
-The 2026-05-08 source cluster incident was an ExternalSecret race.
-Reaching for a Lua health check for ExternalSecret was considered and
-rejected — the fix instead lives in the application layer (pvc-plumber
-v3.1.0 lazy-credential mount). See
-[`docs/pvc-plumber-explained.md`](../../docs/pvc-plumber-explained.md)
-"The ArgoCD ↔ ESO race" section for the full reasoning.
+This starter carries two deliberate exceptions in
+`infrastructure/controllers/argocd/values.yaml`: child `Application` health
+makes app-of-apps waves wait, and kopiur `Restore` health holds an application
+`Progressing` until hydration finishes. Both directly enforce the ordering and
+restore-before-bind safety model documented in
+[`docs/architecture.md`](../../docs/architecture.md).
 
 ## The four-bar test
 
@@ -51,10 +51,9 @@ Before adding a custom resource health Lua check, ALL FOUR must be true:
 
 3. **Absence of the health check causes production incidents.**
    Not "is annoying" or "shows OutOfSync forever (cosmetic)." The bar
-   is: real downtime traceable to ArgoCD not knowing what state a
-   resource is in. The 2026-05-08 ESO race incident barely cleared this
-   bar (it caused a deploy-time crashloop that propagated into
-   admission-failure), and even there the better fix was operator-side.
+   is: real downtime or unsafe ordering traceable to ArgoCD not knowing what
+   state a resource is in. The existing Application and Restore checks clear
+   this bar because removing either turns sync waves into creation ordering.
 
 4. **Heavily commented + cited.** If you do add Lua, the Lua block
    carries a header comment block citing:
@@ -75,11 +74,10 @@ When tempted to add Lua, walk through these in order:
    ArgoCD will show "Unknown" health for this resource — that's
    accurate, not broken.
 
-2. **Can the application layer paper over the gap?** The ESO race fix
-   was operator-side: pvc-plumber v3.1.0 mounts creds as a directory and
-   reads them lazily, removing the race entirely without ArgoCD needing
-   to know about it. Application-layer fixes are portable, testable, and
-   don't require a Lua interpreter to debug.
+2. **Can the application or operator layer remove the gap?** Prefer readiness
+   conditions, fail-closed dependencies, or lazy credential reads that remove
+   the race entirely. Those fixes are portable and testable and do not require
+   a Lua interpreter to debug.
 
 3. **Can a built-in ArgoCD health check be made smarter?** ArgoCD has
    built-in health checks for CronJob, Workflow, Rollout, etc. If your
@@ -101,5 +99,5 @@ block is non-negotiable.
 - `.claude/rules/no-scripts-as-design.md` — companion rule on resisting
   "just one more bash script" reflexes (same disposition, different
   surface)
-- `docs/pvc-plumber-explained.md` — narrative version of the four-bar
-  test in action on the 2026-05-08 ESO race
+- `docs/architecture.md` — why the two current health customizations are
+  load-bearing for sync-wave and restore ordering

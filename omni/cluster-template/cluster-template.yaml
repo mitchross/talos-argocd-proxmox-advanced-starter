@@ -13,13 +13,10 @@
 # HA control plane to function. When you're ready for production, add
 # two more CPs (size: 3) and re-run `omnictl cluster template sync`.
 #
-# Why is the CP untainted? Longhorn defaults to a 2-replica
-# StorageClass; with 2 worker nodes that's already enough, but having
-# the CP available as a third storage candidate is cheap insurance.
-# `allowSchedulingOnControlPlanes: true` removes the NoSchedule taint
-# Talos applies by default. If you scale to 3 CPs later, you'll
-# probably want to flip this back to false (HA control planes
-# shouldn't accept arbitrary workloads).
+# The control plane keeps Talos' default NoSchedule taint. Both workers carry
+# the Longhorn host-path mount, so application and storage workloads stay off
+# the control plane. If you intentionally build a one-node lab, add a scoped
+# control-plane scheduling patch and the same Longhorn mount to that machine.
 #
 # After applying this template, Omni will provision the VMs in Proxmox
 # via the infrastructure provider, install Talos, and assemble the
@@ -39,9 +36,9 @@ name: homelab
 labels:
   cluster-id: "1"
 kubernetes:
-  version: v1.36.2
+  version: v1.36.3
 talos:
-  version: v1.13.5
+  version: v1.13.7
 patches:
   - name: disable-default-cni
     inline:
@@ -49,6 +46,10 @@ patches:
         network:
           cni:
             name: none
+          # Must match Cilium's ipv4NativeRoutingCIDR. Declaring it here also
+          # makes Kubernetes assign worker PodCIDRs from the same range.
+          podSubnets:
+            - 10.14.0.0/16
         proxy:
           disabled: true
   - name: dns-resolver
@@ -69,13 +70,6 @@ patches:
       machine:
         install:
           disk: /dev/sda
-  - name: allow-scheduling-on-control-planes
-    # Untaint the control plane so workloads (specifically: Longhorn's
-    # storage replicas) can land there. Safe for a single-CP starter; flip
-    # back to false when you scale to 3 CPs for HA.
-    inline:
-      cluster:
-        allowSchedulingOnControlPlanes: true
 ---
 kind: ControlPlane
 machineClass:
@@ -106,7 +100,8 @@ patches:
     # path) appear at /var/lib/longhorn inside the kubelet's view.
     #
     # If you're using a multi-disk worker (separate disk for Longhorn data),
-    # see docs/extending/ for the right shape — you'd swap the bind mount
+    # see ../../docs/extending/multi-disk-longhorn.md for the right shape —
+    # you'd swap the bind mount
     # for an actual filesystem mount.
     inline:
       machine:

@@ -11,11 +11,11 @@ resources:
 helmCharts:
 - name: external-secrets
   repo: https://charts.external-secrets.io
-  version: 2.7.0
+  version: 2.8.0
   releaseName: external-secrets
   valuesFile: values.yaml
   includeCRDs: true
-# ESO 2.4.0 ships ~620KB CRDs (clustersecretstores.yaml, secretstores.yaml).
+# ESO 2.x ships CRDs that exceed the client-side apply annotation limit.
 # That blows past the 256KB annotation cap on `kubectl.kubernetes.io/last-applied-configuration`
 # any time ArgoCD falls back to client-side apply. Per ArgoCD docs and
 # argo-cd#11269 / #26279, the resource-level annotation
@@ -27,7 +27,7 @@ helmCharts:
 # Field-manager migration was bootstrapped out of band on 2026-04-27 via
 # `kubectl get crd $X -o yaml | kubectl apply --server-side --force-conflicts
 # --field-manager=argocd-controller -f -` for the four pre-existing CRDs.
-# The new CRDs in 2.4.0 (pushsecrets, clusterpushsecrets, clustergenerators,
+# PushSecret, ClusterPushSecret, ClusterGenerator, and related CRDs
 # generatorstates) get created SSA-native on first apply.
 patches:
 - patch: |

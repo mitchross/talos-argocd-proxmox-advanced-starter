@@ -29,7 +29,7 @@ spec:
   source:
     repoURL: https://github.com/mitchross/talos-argocd-proxmox-advanced-starter.git
     path: infrastructure/controllers/argocd/apps
-    targetRevision: HEAD
+    targetRevision: main
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

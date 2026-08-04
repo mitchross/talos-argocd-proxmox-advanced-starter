@@ -5,7 +5,7 @@
 # CNPG operator reaches via gRPC over a barman-cloud Service.
 #
 # Upstream: https://github.com/cloudnative-pg/plugin-barman-cloud
-# Pinned to v0.12.0 (2026-04-14). Bump the URL tag to upgrade.
+# Pinned to v0.14.0. Bump the URL tag to upgrade.
 #
 # Why URL instead of a vendored manifest.yaml: upstream doesn't publish a
 # Helm chart, and the raw manifest is ~1100 lines (mostly CRD OpenAPI
@@ -49,7 +49,7 @@ commonAnnotations:
   argocd.argoproj.io/sync-wave: "-9"
 
 resources:
-  - https://github.com/cloudnative-pg/plugin-barman-cloud/releases/download/v0.12.0/manifest.yaml
+  - https://github.com/cloudnative-pg/plugin-barman-cloud/releases/download/v0.14.0/manifest.yaml
 
 patches:
   # The upstream manifest creates a Namespace resource named `cnpg-system`.

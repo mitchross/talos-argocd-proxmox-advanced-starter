@@ -32,6 +32,10 @@ store or print the secret.
 The `allow-technitium-dns` CiliumNetworkPolicy permits only this ExternalDNS
 pod to reach `192.168.10.15` on TCP/UDP port 53.
 
+The RFC2136 provider uses the current `--rfc2136-axfr` flag. Technitium must
+authorize zone transfer for this TSIG key so ExternalDNS can list records, but
+zone transfer should not be open globally.
+
 `policy=upsert-only` remains intentional until the complete short-name
 migration and TXT ownership state have been observed. Do not enable `sync`
 without a separate review.

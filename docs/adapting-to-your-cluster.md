@@ -14,6 +14,8 @@ interactively; review every resulting diff before pushing.
 | Cilium cluster name + Talos node CIDR | yours | bootstrap/Helm identity + Omni kubelet selection |
 | `homelab-prod` | your 1Password vault | `ClusterSecretStore` |
 | `threadripper` | your Cloudflare tunnel name | cloudflared config |
+| Omni domain + host IP | yours | self-hosted Omni endpoints and SideroLink |
+| Proxmox host + storage pool | yours | provider config and both machine classes |
 
 Recipe:
 
@@ -23,10 +25,13 @@ Recipe:
 4. Commit + **push** (ArgoCD deploys your fork's `main`, not local files).
 5. Follow [getting-started.md](getting-started.md).
 
-The script does not invent external systems. Configure the Technitium TSIG
-key, ExternalDNS owner IDs, Cloudflare tunnel, Proxmox storage pool, machine
-sizing, and 1Password items deliberately. See [networking.md](networking.md)
-and [secret-management.md](secret-management.md).
+The script substitutes non-secret Omni and Proxmox values, but it deliberately
+does not write credentials. Copy `omni/omni/omni.env.example` to the ignored
+`omni.env`, copy both provider examples to `.env` and `config.yaml`, then put
+the infrastructure-provider key and Proxmox API token only in those ignored
+files. Configure the Technitium TSIG key, ExternalDNS owner IDs, Cloudflare
+tunnel, machine sizing, and 1Password items deliberately. See
+[networking.md](networking.md) and [secret-management.md](secret-management.md).
 
 Things you may also want to change on day 2:
 
