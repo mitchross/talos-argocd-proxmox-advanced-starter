@@ -122,6 +122,7 @@ kubectl apply -f infrastructure/controllers/argocd/root.yaml
 | [kopiur-explained.md](docs/kopiur-explained.md) | restore-before-bind, the component/stub split, the mover-UID gotcha |
 | [rustfs-setup.md](docs/rustfs-setup.md) | the one-time S3 backend setup |
 | [cnpg-explained.md](docs/cnpg-explained.md) | Postgres backup/restore, lineages, the one feature flag |
+| [1password-setup.md](docs/1password-setup.md) | the one-time 1Password account setup: vault, Connect server, credentials + token |
 | [secret-management.md](docs/secret-management.md) | 1Password → ESO flow + the vault items to create |
 | [adapting-to-your-cluster.md](docs/adapting-to-your-cluster.md) | every non-secret value to swap and the credentials that stay ignored |
 | [`docs/extending/`](docs/extending/) | optional additional NIC, dedicated Longhorn disk, and GPU worker recipes |

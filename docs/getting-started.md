@@ -177,8 +177,10 @@ Complete these three guides before handing control to Argo CD:
 1. [rustfs-setup.md](rustfs-setup.md): create `kopiur` and
    `postgres-backups` on an S3 system outside the cluster, then create a scoped
    workload access key.
-2. [secret-management.md](secret-management.md): create the documented
-   1Password items and exact fields.
+2. [1password-setup.md](1password-setup.md): create the vault, stand up a
+   1Password Connect server, and mint its credentials file and token — then
+   [secret-management.md](secret-management.md) for the documented items and
+   exact fields.
 3. [networking.md](networking.md): configure the Technitium RFC2136 zone/TSIG
    key and the Cloudflare API token and tunnel.
 
