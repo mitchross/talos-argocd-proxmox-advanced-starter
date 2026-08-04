@@ -3,34 +3,26 @@
 # Settings applied manually via the UI will not be reflected here and can be
 # overwritten during a Helm upgrade.
 #
-# V1 (default) data engine — restored 2026-06-12 after the V2/SPDK experiment
-# failed under full-DR restore load (open Longhorn 1.12 bugs #13315/#13314:
-# interrupted rebuilds permanently poison replica metadata; re-crash after
-# auto-reattach). V1 is upstream's default engine, still actively maintained,
-# and ran this cluster stably for months before the V2 rebuild. Data path is
-# the default /var/lib/longhorn (bind-mounted from /var/local/longhorn on the
-# single 800G disk by the cluster template's longhorn-storage patch). Engines
-# cannot be flipped on a live cluster with attached volumes — this config is
-# applied via nuke + rebuild with restore-from-backup (the proven DR flow).
-# History: V2 forensics in git history; short version in docs/disaster-recovery.md.
+# The starter deliberately uses Longhorn's stable V1 data engine. Each worker's
+# /var/lib/longhorn path is bind-mounted from /var/local/longhorn by the Omni
+# cluster template. Do not switch data engines on attached volumes; treat that
+# as a planned backup, rebuild, and restore migration.
 defaultSettings:
   # NOTE: Longhorn 1.10 consolidates settings for V1/V2 data engines. Use either
   # a single scalar or a JSON string with per-engine values like {"v1":"...","v2":"..."} when needed.
   defaultDataPath: "/var/lib/longhorn"
   storageMinimalAvailablePercentage: "10"
-  # Honor the node.longhorn.io/default-disks-config annotation set in the Talos
-  # cluster template, so Longhorn registers BOTH disks on fresh bootstrap. Without
-  # this, Longhorn ignores the annotation and only creates defaultDataPath.
-  createDefaultDiskLabeledNodes: "true"
-  # The annotation already sets storageReserved:0 per disk; Longhorn 1.12 also
-  # applies this global % to annotation-created default disks, so keep it 0 (the
-  # real physical guard is storageMinimalAvailablePercentage above).
-  storageReservedPercentageForDefaultDisk: "0"
-  # Single-node: ~1.3 TiB of declared volumes on one 448 GiB disk. Volumes are
-  # thin (~117 GiB physical), so 600% is safe — physical free is the real guard
-  # (storageMinimalAvailablePercentage: 10). Band-aid for thin disk headroom;
-  # durable fix is NFS offload of bulk PVCs. History pre-600%: git log.
-  storageOverProvisioningPercentage: "600"
+  # Base profile: automatically register /var/lib/longhorn on every eligible
+  # worker. The multi-disk recipe flips this to true and supplies explicit node
+  # labels/annotations instead.
+  createDefaultDiskLabeledNodes: "false"
+  # The default path shares the 200 GB Talos system disk, so preserve room for
+  # images, logs, and pod ephemeral storage.
+  storageReservedPercentageForDefaultDisk: "30"
+  # Keep declared capacity at or below physical capacity in a reusable starter.
+  # Raise this only after measuring real allocated bytes and alerting on free
+  # space; thin provisioning is not extra storage.
+  storageOverProvisioningPercentage: "100"
   allowRecurringJobWhileVolumeDetached: "true"
   replicaAutoBalance: "best-effort"
   # Ensure new consolidated settings that can be per-engine stay simple scalars for V1-only clusters
@@ -38,23 +30,9 @@ defaultSettings:
   # Note: Use plain values, not JSON format - JSON causes "mismatched data engines" errors
   fastReplicaRebuildEnabled: "true"
   engineReplicaTimeout: "8"
-  # Percentage of allocatable CPU reserved per instance-manager pod (NOT cores).
-  # Chart default is 12; "8" is the proven homelab value from the V1 era.
-  # V1 instance managers do NOT busy-poll (that was V2/SPDK's reactor model,
-  # which burned ~4-5 cores per node at 100% even when idle — one of the
-  # reasons V2 was retired on 2026-06-12). 8% of a 32-core worker ≈ 2.5 cores
-  # reserved, plenty for V1's interrupt-driven engines.
-  # Avoid per-engine JSON strings — they trip "mismatched data engines" errors.
+  # Percentage of allocatable CPU reserved per instance-manager pod (not cores).
+  # Avoid per-engine JSON strings; V1 uses a scalar.
   guaranteedInstanceManagerCPU: "8"
-  # NOTE 2026-06-09: a previous `guaranteedInstanceManagerMemory: "1Gi"` was
-  # removed here — Longhorn has NO instance-manager memory-guarantee setting
-  # (only the CPU one above exists in the chart/setting schema), so the key was
-  # a silent no-op: it rendered into the longhorn-default-setting ConfigMap but
-  # longhorn-manager ignored it, and instance-manager pods never received the
-  # intended memory requests. The 2026-05-04 scheduler-math concern it tried to
-  # address (IM/share-manager pods with zero memory requests) is therefore still
-  # open and must be solved another way (node sizing / IM pod overhead), not via
-  # a Longhorn setting.
   # Performance: prefer local disk for reads when replica is on same node
   defaultDataLocality: "best-effort"
   # Cleanup: limit snapshot accumulation per volume
@@ -88,13 +66,11 @@ persistence:
   # default) — the `dataEngine: v2` routing was removed 2026-06-12.
   defaultClass: true
   # -- Default number of replicas for volumes.
-  # SINGLE-NODE cluster (2950X Threadripper box, single-node-talos-gpu machine
-  # class): MUST be 1. With replica >1 on one node, Longhorn's default replica
-  # anti-affinity has nowhere to place the extra replicas, so every volume stays
-  # Degraded forever. Node-failure resilience is N/A with a single node anyway —
-  # off-cluster durability comes from kopiur + Kopia backups to S3.
-  # (Was 2 for the multi-node DL360 cluster, where Longhorn served from a
-  # surviving replica on another node; restore that value if you scale back out.)
+  # One synchronous replica is intentional: the starter's two worker VMs are
+  # normally on one Proxmox host, so a second copy on the same failure domain
+  # consumes capacity without surviving host loss. Durability comes from kopiur
+  # copies on the off-cluster S3 system. Increase to 2 or 3 only when workers,
+  # storage devices, and their network paths are genuinely independent.
   defaultClassReplicaCount: 1
   # -- Default filesystem type.
   defaultFsType: ext4
@@ -105,6 +81,6 @@ persistence:
 # separate HTTPRoute resource.
 ingress:
   enabled: false
-# Single node: 1 UI replica (chart default 2 buys no HA on one node).
+# One UI replica keeps the starter small; the UI is not in the data path.
 longhornUI:
   replicas: 1

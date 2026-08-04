@@ -19,7 +19,7 @@ metadata:
     app: gitea
 spec:
   instances: 1
-  imageName: ghcr.io/cloudnative-pg/postgresql:16.2@sha256:ee2e3ce7f0ea935c3f4ab245c0b3959c9f1c49816ae02222ceb6bc347f48e43b
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.14@sha256:d9942fd46669234d39c5e6152e23a973bd38df4d2e2eddb6b69bb71b76625ce1
   resources:
     requests:
       memory: 512Mi
@@ -37,9 +37,8 @@ spec:
     size: 20Gi
     storageClass: longhorn
   walStorage:
-    # 50Gi -> 10Gi for single-node 2950X rebuild (2026-06-19). WAL is transient
-    # spool (max_wal_size < 1GB); 50Gi was never approached. Reclaims Longhorn
-    # scheduling budget on the single 512G disk.
+    # WAL is a transient spool (max_wal_size < 1GiB here); 10GiB leaves ample
+    # headroom without reserving a second database-sized volume.
     size: 10Gi
     storageClass: longhorn
   enableSuperuserAccess: true

@@ -5,9 +5,12 @@ Things to have in place before deploying the Omni half of this starter.
 ## Infrastructure
 
 ### Proxmox VE host
-- **Proxmox VE 8.x** installed and accessible
+- **Proxmox VE 8 or 9** installed and accessible (provider HA placement fields
+  require Proxmox VE 9+)
 - **API access** on port `8006` (default)
-- **Storage pool** with at least ~600 GB free (3 CPs × 60 GB + 3 workers × 200 GB)
+- **Storage pool** with at least ~460 GB free for the default topology
+  (1 control plane × 60 GB + 2 workers × 200 GB), plus thin-provisioning and
+  snapshot headroom
 - **A user with VM management permissions**. `root@pam` is fine for testing;
   for production use a dedicated `omni@pve` user — see the bottom of
   `omni/proxmox-provider/config.yaml.example` for the role-grant commands.

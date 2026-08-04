@@ -11,11 +11,11 @@
 #
 # This starter ships single-NIC workers. If you have a separate storage
 # network (10G NIC to TrueNAS over vmbr1, etc.), see
-#   docs/extending/
+#   ../../docs/extending/additional-nics.md
 # for the additional_nics pattern.
 #
 # Multi-disk workers (separate disk for /var/lib/longhorn, etc.) and GPU
-# workers also have their own recipes under docs/extending/.
+# workers also have recipes under ../../docs/extending/.
 metadata:
   namespace: default
   type: MachineClasses.omni.sidero.dev

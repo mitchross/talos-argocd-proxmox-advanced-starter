@@ -11,8 +11,9 @@ helmCharts:
     repo: oci://ghcr.io/home-operations/charts
     # renovate: datasource=docker depName=ghcr.io/home-operations/charts/kopiur
     # CHART version == app version (release.yaml packages with --app-version=VERSION).
-    # Pre-1.0/alpha: re-verify CRDs on every bump.
-    version: 0.4.13
+    # Pre-1.0/alpha: re-verify CRDs on every bump. The published OCI chart pins
+    # controller, webhook, and mover images by digest.
+    version: 0.9.2
     releaseName: kopiur
     namespace: kopiur-system
     includeCRDs: true

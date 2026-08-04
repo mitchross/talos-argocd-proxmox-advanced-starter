@@ -19,13 +19,40 @@ SWAPS=(
   "192.168.10.52|The internal Gateway IP from your Cilium LoadBalancer pool"
   "192.168.10.32/27|Your Cilium LoadBalancer pool CIDR"
   "talos-singlenode-gpu-prod|Your Cilium cluster name"
+  "__REPLACE_ME_DOMAIN__|Your base domain for Omni, e.g. lab.example.com"
+  "__REPLACE_ME_OMNI_HOST_IP__|The LAN IP of the host running Omni"
+  "__REPLACE_ME_PROXMOX_HOST__|Your Proxmox host IP or DNS name"
+  "__REPLACE_ME_PROXMOX_STORAGE_POOL__|Your Proxmox VM storage pool, e.g. local-zfs"
   "__REPLACE_ME_NODE_CIDR__|Your Talos node CIDR, e.g. 192.168.10.0/24"
   "homelab-prod|Your 1Password vault name"
   "threadripper|Your Cloudflare tunnel name"
 )
 
 files_matching() {
-  grep -rl --exclude-dir=.git --exclude-dir=charts -F "$1" . 2>/dev/null || true
+  # Never rewrite this script while it is running. Other matches stay broad so
+  # commands and examples in the documentation remain accurate.
+  grep -rIl \
+    --exclude=adapt-to-your-cluster.sh \
+    --exclude-dir=.git \
+    --exclude-dir=charts \
+    -F "$1" . 2>/dev/null || true
+}
+
+replace_fixed_string() {
+  local file="$1"
+  local current="$2"
+  local replacement="$3"
+  local escaped_current escaped_replacement
+
+  escaped_current=$(printf '%s' "$current" | sed 's/[\\|&]/\\&/g')
+  escaped_replacement=$(printf '%s' "$replacement" | sed 's/[\\|&]/\\&/g')
+
+  if sed --version >/dev/null 2>&1; then
+    sed -i "s|${escaped_current}|${escaped_replacement}|g" "$file"
+  else
+    # BSD sed (macOS) requires an explicit empty backup suffix.
+    sed -i '' "s|${escaped_current}|${escaped_replacement}|g" "$file"
+  fi
 }
 
 for entry in "${SWAPS[@]}"; do
@@ -42,15 +69,29 @@ for entry in "${SWAPS[@]}"; do
   read -rp "   Replace with (empty = skip): " value
   [ -z "$value" ] && { echo "   skipped"; continue; }
   files_matching "$current" | while read -r f; do
-    sed -i "s|${current}|${value}|g" "$f"
+    replace_fixed_string "$f" "$current" "$value"
   done
   echo "   done."
 done
 
 echo
 echo "Remaining manual steps (docs/adapting-to-your-cluster.md):"
+echo "  - Copy ignored Omni/provider example files, then add UUIDs, auth, and secrets"
+echo "  - Put the Proxmox API token only in ignored omni/proxmox-provider/config.yaml"
 echo "  - Technitium TSIG key/item names and ExternalDNS owner IDs"
 echo "  - 1Password item names, if you do not use the documented defaults"
-echo "  - Omni cluster name, machine sizing, storage pool, and hardware"
+echo "  - Omni cluster name, machine sizing, and hardware topology"
 echo "  - Review: git diff   — substitution is global, check every hunk"
 echo "  - Commit AND PUSH your fork: ArgoCD deploys the remote main, not this checkout"
+
+remaining_placeholders=$(grep -rIl \
+  --exclude=adapt-to-your-cluster.sh \
+  --exclude-dir=.git \
+  --exclude-dir=charts \
+  -E '__REPLACE_ME_(DOMAIN|OMNI_HOST_IP|PROXMOX_HOST|PROXMOX_STORAGE_POOL|NODE_CIDR)__' \
+  . 2>/dev/null || true)
+if [ -n "$remaining_placeholders" ]; then
+  echo
+  echo "⚠️  Required non-secret placeholders remain in:"
+  printf '%s\n' "$remaining_placeholders" | sed 's/^/  - /'
+fi

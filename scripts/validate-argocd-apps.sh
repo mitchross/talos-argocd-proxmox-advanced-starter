@@ -164,9 +164,18 @@ bootstrap_script="scripts/bootstrap-argocd.sh"
 readme="README.md"
 argocd_kustomization="infrastructure/controllers/argocd/kustomization.yaml"
 if [ -f "$bootstrap_script" ] && [ -f "$readme" ] && [ -f "$argocd_kustomization" ]; then
-  bootstrap_version=$(grep -A4 "helm upgrade --install argocd argo-cd" "$bootstrap_script" | grep -- "--version" | head -1 | grep -oE '[0-9]+(\.[0-9]+)+' || true)
-  readme_version=$(grep -A4 "helm upgrade --install argocd argo-cd" "$readme" | grep -- "--version" | head -1 | grep -oE '[0-9]+(\.[0-9]+)+' || true)
   gitops_version=$(grep -A5 "name: argo-cd" "$argocd_kustomization" | grep "version:" | head -1 | sed 's/.*version: //' | sed 's/#.*//' | tr -d "'\"" | xargs || true)
+  readme_version=$(grep -A4 "helm upgrade --install argocd argo-cd" "$readme" | grep -- "--version" | head -1 | grep -oE '[0-9]+(\.[0-9]+)+' || true)
+
+  # The bootstrap script reads the self-managed chart pin directly from the
+  # Kustomization so there is no second hard-coded version to drift. Accept
+  # that form only when both the dynamic flag and source file are present.
+  if grep -Fq -- "--version \"\$EXPECTED_ARGO_CHART_VERSION\"" "$bootstrap_script" && \
+     grep -q 'infrastructure/controllers/argocd/kustomization.yaml' "$bootstrap_script"; then
+    bootstrap_version="$gitops_version"
+  else
+    bootstrap_version=$(grep -A4 "helm upgrade --install argocd argo-cd" "$bootstrap_script" | grep -- "--version" | head -1 | grep -oE '[0-9]+(\.[0-9]+)+' || true)
+  fi
 
   if [ -z "$bootstrap_version" ] || [ -z "$readme_version" ] || [ -z "$gitops_version" ]; then
     echo "  ERROR: Could not determine documented/bootstrap/self-managed ArgoCD chart versions"

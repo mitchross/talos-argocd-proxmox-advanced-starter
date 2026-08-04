@@ -1,10 +1,9 @@
 services:
   omni-infra-provider-proxmox:
-    # Upstream image — this starter doesn't depend on the local-build features
-    # the source homelab uses (multi-disk, GPU PCI mappings, etc.). If you
-    # need those, swap to the local-build image and see
-    # `docs/extending/adding-gpu-support.md`.
-    image: ghcr.io/siderolabs/omni-infra-provider-proxmox:latest
+    # Upstream v0.2 includes multi-disk, additional-NIC, PCI mapping, and
+    # Proxmox 9 HA fields. The base machine classes keep those optional; see
+    # ../../docs/extending/ for worked additions.
+    image: ghcr.io/siderolabs/omni-infra-provider-proxmox:v0.2.0@sha256:c0d0687e87d9f2fb77c7a9d6d7263820953d20441200f3de64b22afaa7ff273e
     container_name: omni-infra-provider-proxmox
     env_file:
       - .env

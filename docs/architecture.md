@@ -1,9 +1,10 @@
 # Architecture
 
-The kit is a **literal subset of a production homelab**
+The kit is a **production-shaped companion to a live homelab**
 ([talos-argocd-proxmox](https://github.com/mitchross/talos-argocd-proxmox))
-— same directory shape, same sync waves, same patterns, fewer apps. The
-parent's docs are therefore this kit's deep-dive shelf; links below.
+— same directory shape, same sync waves, and the same operating patterns, with
+fewer apps and deliberately self-contained examples. The parent repo and its
+docs are this kit's deep-dive shelf; links are below.
 
 ## GitOps self-management: directory = Application
 
@@ -63,9 +64,9 @@ pattern miss both):
 | Mechanism | CSI snapshot → Kopia → `s3://kopiur` | base backups + WAL → `s3://postgres-backups` |
 | Restore | restore-before-bind populator ([kopiur-explained.md](kopiur-explained.md)) | `overlays/recovery` bootstrap ([cnpg-explained.md](cnpg-explained.md)) |
 
-The parent repo is testing a newer plain-Postgres + kopiur direction. It is
-intentionally absent here: the starter retains the previously proven
-CNPG/Barman flow until that migration has its own repeatable live test.
+The live repo also demonstrates plain Postgres protected as a filesystem
+workload. This starter keeps CNPG/Barman on purpose so the guide teaches the
+SQL-aware branch and makes the boundary between the two backup systems explicit.
 
 ## Networking
 

@@ -23,8 +23,19 @@ EXPECTED_CILIUM_VERSION="$(awk '
     print version
   }
 ' "$ROOT_DIR/infrastructure/networking/cilium/kustomization.yaml")"
-EXPECTED_CILIUM_CLUSTER_NAME="$(awk '$1 == "name:" { print $2; exit }' \
-  "$ROOT_DIR/infrastructure/networking/cilium/values.yaml")"
+EXPECTED_ARGO_CHART_VERSION="$(awk '
+  $1 == "-" && $2 == "name:" && $3 == "argo-cd" { found = 1; next }
+  found && $1 == "version:" {
+    gsub(/"/, "", $2)
+    print $2
+    exit
+  }
+' "$ROOT_DIR/infrastructure/controllers/argocd/kustomization.yaml")"
+
+if [ -z "$EXPECTED_ARGO_CHART_VERSION" ]; then
+  echo "❌ Could not read the Argo CD chart version from its Kustomization."
+  exit 1
+fi
 
 if command -v cilium > /dev/null 2>&1; then
   CILIUM_CMD="cilium"
@@ -48,24 +59,19 @@ fi
 if ! "$CILIUM_CMD" status --wait --wait-duration 30s &> /dev/null; then
   echo "❌ Cilium is not healthy. Install Cilium first:"
   echo ""
-  echo "   $CILIUM_CMD install \\"
-  echo "       --version $EXPECTED_CILIUM_VERSION \\"
-  echo "       --set cluster.name=$EXPECTED_CILIUM_CLUSTER_NAME \\"
-  echo "       --set ipam.mode=kubernetes \\"
-  echo "       --set kubeProxyReplacement=true \\"
-  echo "       --set k8sServiceHost=localhost \\"
-  echo "       --set k8sServicePort=7445 \\"
-  echo "       --set hubble.enabled=false \\"
-  echo "       --set hubble.relay.enabled=false \\"
-  echo "       --set hubble.ui.enabled=false \\"
-  echo "       --set gatewayAPI.enabled=true"
+  echo "   $CILIUM_CMD install --version $EXPECTED_CILIUM_VERSION \\"
+  echo "       --values infrastructure/networking/cilium/values.yaml --wait"
   echo ""
   exit 1
 fi
 
 RUNNING_VERSION=$(kubectl get ds cilium -n kube-system -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null | sed -E 's/.*:v([0-9]+\.[0-9]+\.[0-9]+).*/\1/' || true)
 
-if [ -n "$RUNNING_VERSION" ] && [ "$RUNNING_VERSION" != "$EXPECTED_CILIUM_VERSION" ]; then
+if [ -z "$RUNNING_VERSION" ]; then
+  echo "❌ Could not determine the running Cilium image version."
+  echo "   Inspect: kubectl -n kube-system get ds/cilium -o yaml"
+  exit 1
+elif [ "$RUNNING_VERSION" != "$EXPECTED_CILIUM_VERSION" ]; then
   echo "⚠️  WARNING: Cilium version mismatch!"
   echo "   Running:  $RUNNING_VERSION"
   echo "   Expected: $EXPECTED_CILIUM_VERSION (from Helm chart)"
@@ -76,15 +82,7 @@ if [ -n "$RUNNING_VERSION" ] && [ "$RUNNING_VERSION" != "$EXPECTED_CILIUM_VERSIO
   echo "   Recommended: Reinstall Cilium at the correct version first:"
   echo "     $CILIUM_CMD uninstall"
   echo "     $CILIUM_CMD install --version $EXPECTED_CILIUM_VERSION \\"
-  echo "         --set cluster.name=$EXPECTED_CILIUM_CLUSTER_NAME \\"
-  echo "         --set ipam.mode=kubernetes \\"
-  echo "         --set kubeProxyReplacement=true \\"
-  echo "         --set k8sServiceHost=localhost \\"
-  echo "         --set k8sServicePort=7445 \\"
-  echo "         --set hubble.enabled=false \\"
-  echo "         --set hubble.relay.enabled=false \\"
-  echo "         --set hubble.ui.enabled=false \\"
-  echo "         --set gatewayAPI.enabled=true"
+  echo "         --values infrastructure/networking/cilium/values.yaml --wait"
   echo ""
   read -p "   Continue anyway? (y/N) " -n 1 -r
   echo ""
@@ -94,6 +92,19 @@ if [ -n "$RUNNING_VERSION" ] && [ "$RUNNING_VERSION" != "$EXPECTED_CILIUM_VERSIO
 else
   echo "✅ Cilium $RUNNING_VERSION is healthy and matches Helm chart ($EXPECTED_CILIUM_VERSION)"
 fi
+
+# `cilium status` proves the DaemonSet is ready. This active probe proves nodes
+# and endpoints can actually reach one another before Argo creates storage,
+# backup, database, and application traffic across workers.
+echo ""
+echo "🔍 Pre-flight: Probing cross-node Cilium connectivity..."
+if ! kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-health status --probe; then
+  echo "❌ Cilium is running, but cross-node health probes failed."
+  echo "   Fix node routing/firewall/MTU problems before starting the sync waves."
+  exit 1
+fi
+echo "✅ Cross-node Cilium health probes passed"
 
 # Step 1: Create namespace
 echo ""
@@ -121,7 +132,7 @@ echo ""
 echo "⎈ Installing ArgoCD via Helm..."
 if ! helm upgrade --install argocd argo-cd \
   --repo https://argoproj.github.io/argo-helm \
-  --version 10.1.3 \
+  --version "$EXPECTED_ARGO_CHART_VERSION" \
   --namespace argocd \
   --values "$ROOT_DIR/infrastructure/controllers/argocd/values.yaml" \
   --wait \

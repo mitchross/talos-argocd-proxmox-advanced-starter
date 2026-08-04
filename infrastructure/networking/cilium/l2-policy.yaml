@@ -13,19 +13,18 @@ spec:
   # CRITICAL: Enable L2 announcements for LoadBalancer IPs
   loadBalancerIPs: true
 
-  # Announce LoadBalancer IPs on all network interfaces starting with 'e'
-  # This typically matches: eth0, eno1, enp*, etc.
+  # Announce LoadBalancer IPs on conventional Ethernet interface names.
+  # This covers Proxmox/Talos names such as eth0, ens18, and enp6s18.
   interfaces:
-    - ^(eth|ens)\d+$
+    - ^(eth|ens|enp)[a-z0-9]+$
 
 
   # Announce for all LoadBalancer services
   serviceSelector:
     matchLabels: {}
 
-  # Single-node cluster: the only node is a control-plane node, so it must be
-  # eligible to announce LoadBalancer IPs. Excluding control-plane nodes leaves
-  # every VIP allocated but unreachable from the LAN.
+  # Any worker may hold an L2 lease. Add a label selector here if only selected
+  # nodes are physically connected to the LoadBalancer subnet.
   nodeSelector:
     matchLabels: {}
     matchExpressions: []

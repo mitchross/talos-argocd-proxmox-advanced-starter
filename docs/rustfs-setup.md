@@ -74,5 +74,5 @@ points at `postgres-backups` with the same workload credentials.
 ```bash
 kubectl get clusterrepository cluster-kopia -o wide   # operator connected?
 kubectl -n karakeep get secret kopiur-rustfs          # creds fanned out?
-kubectl get snapshot -A                               # a Completed run = auth proven
+kubectl get snapshot -A                               # a Succeeded run = auth proven
 ```
