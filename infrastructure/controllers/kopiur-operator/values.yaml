@@ -1,6 +1,21 @@
 # kopiur operator Helm values. Rendered locally from the upstream OCI chart —
-# see kustomization.yaml. The published chart pins the controller, webhook, and
-# mover images by digest, so no tag override is carried here.
+# see kustomization.yaml.
+#
+# Images are deliberately left at their chart defaults: the chart ships
+# `image.tag: ""` / `image.digest: ""` (likewise `webhook.image` and
+# `mover.image`), and an empty tag resolves to .Chart.AppVersion — which the
+# release packages equal to the chart version. So the single chart pin in
+# kustomization.yaml drives all three images and they can never disagree with
+# the CRDs rendered alongside them.
+#
+# This is a KNOWN, deliberate exception to .claude/rules/always-pin-sha.md.
+# Pinning `image.digest` here would decouple the images from the chart pin:
+# Renovate bumps the chart (kustomize manager) and the digests (helm-values
+# manager) as separate PRs, so between them the cluster runs one version's
+# CRDs/templates against another version's controller. For an operator that
+# owns data-protection CRDs that skew is worse than the floating-tag risk the
+# rule guards against. To pin anyway, set tag AND digest together on all three
+# images in the same commit as the chart bump — never digest alone.
 installScope: cluster # ClusterRole + ClusterRepository reconciliation
 webhook:
   # Fail closed: malformed backup/restore objects must not bypass admission.

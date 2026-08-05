@@ -10,11 +10,22 @@ helmCharts:
   - name: kopiur
     repo: oci://ghcr.io/home-operations/charts
     # renovate: datasource=docker depName=ghcr.io/home-operations/charts/kopiur
-    # CHART version == app version (release.yaml packages with --app-version=VERSION).
-    # Pre-1.0/alpha: re-verify CRDs on every bump. The published OCI chart pins
-    # controller, webhook, and mover images by digest.
+    # CHART version == app version (release.yaml packages with --app-version=VERSION),
+    # so this one pin also drives the controller/webhook/mover image tags.
+    # Pre-1.0/alpha: re-verify the 8 CRDs on every bump.
     version: 0.9.2
     releaseName: kopiur
     namespace: kopiur-system
+    # NEVER remove includeCRDs: true — it IS the CRD lifecycle here. Upstream
+    # keeps the CRDs in helm's native crds/ dir, which `helm upgrade` does not
+    # manage; that is how Flux HelmRelease users lost every kopiur CR on the
+    # 0.6.0 chart refactor. Rendering with --include-crds keeps all 8 in the
+    # manifest ArgoCD applies, so they never appear to leave the desired state.
     includeCRDs: true
     valuesFile: values.yaml
+    # The chart declares kubeVersion >=1.32.0-0. Without this field,
+    # `kustomize build --enable-helm` (CI AND the ArgoCD repo-server) templates
+    # against helm's DEFAULT capabilities and the render fails outright with
+    # "chart requires kubeVersion >=1.32.0-0" — the whole backup operator then
+    # never deploys. Keep in step with omni/cluster-template/cluster-template.yaml.
+    kubeVersion: "1.36.3"
