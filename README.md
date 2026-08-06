@@ -29,7 +29,8 @@ no attempt to shim them away:
 No sealed-secrets fallback, no in-cluster MinIO, no demo shims. Working
 values (`vanillax.xyz`, a LAN S3 endpoint, DNS and Gateway addresses) ship
 in-tree so you can see a real configuration; the adaptation script replaces
-the complete example profile ([guide](docs/adapting-to-your-cluster.md)).
+the complete non-secret example profile and leaves runtime credentials in
+ignored files ([guide](docs/adapting-to-your-cluster.md)).
 
 ## The dependency ladder (why these three apps)
 
@@ -100,7 +101,7 @@ kubectl apply -f infrastructure/controllers/argocd/ns.yaml
 
 helm upgrade --install argocd argo-cd \
   --repo https://argoproj.github.io/argo-helm \
-  --version 10.1.3 \
+  --version 10.2.2 \
   --namespace argocd \
   --values infrastructure/controllers/argocd/values.yaml \
   --wait --timeout 10m
@@ -115,14 +116,16 @@ kubectl apply -f infrastructure/controllers/argocd/root.yaml
 
 | Doc | What |
 |---|---|
-| [getting-started.md](docs/getting-started.md) | provision → bootstrap → verify → restore drill |
+| [getting-started.md](docs/getting-started.md) | canonical start-to-finish guide: Omni → Talos → Cilium → Argo/AppSets → monitoring/apps → restore drill |
 | [architecture.md](docs/architecture.md) | waves, AppSets, gating, the two backup systems |
 | [networking.md](docs/networking.md) | Technitium private DNS, Cloudflare public DNS/tunnel, Gateway contracts |
 | [kopiur-explained.md](docs/kopiur-explained.md) | restore-before-bind, the component/stub split, the mover-UID gotcha |
 | [rustfs-setup.md](docs/rustfs-setup.md) | the one-time S3 backend setup |
 | [cnpg-explained.md](docs/cnpg-explained.md) | Postgres backup/restore, lineages, the one feature flag |
+| [1password-setup.md](docs/1password-setup.md) | the one-time 1Password account setup: vault, Connect server, credentials + token |
 | [secret-management.md](docs/secret-management.md) | 1Password → ESO flow + the vault items to create |
-| [adapting-to-your-cluster.md](docs/adapting-to-your-cluster.md) | the 5 values to swap |
+| [adapting-to-your-cluster.md](docs/adapting-to-your-cluster.md) | every non-secret value to swap and the credentials that stay ignored |
+| [`docs/extending/`](docs/extending/) | optional additional NIC, dedicated Longhorn disk, and GPU worker recipes |
 
 **Interactive:** poke the backup/restore state machine in your browser —
 [the kopiur playground](https://mitchross.github.io/talos-argocd-proxmox/kopiur-playground/) —
@@ -130,12 +133,15 @@ and read [the easy guide](https://mitchross.github.io/talos-argocd-proxmox/easy-
 for the from-zero narrative (including an adoption ladder if you only want
 kopiur without the rest of this stack).
 
-## Version pins (2026-07)
+## Version pins (2026-08)
 
-Talos `v1.13.5` (with the mandatory `machine.install.disk` patch) · Omni
-`v1.9.0` · Kubernetes `v1.36.x` · Cilium `1.19.5` · Gateway API `v1.4.1`
-(intentional — don't outrun Cilium) · ArgoCD `v3.4.5` / Helm chart `10.1.3` ·
-kube-prometheus-stack `87.x` · images SHA-pinned, Renovate-managed.
+Talos `v1.13.7` (with the mandatory `machine.install.disk` patch) · Omni
+`v1.9.3` · Kubernetes `v1.36.3` · Cilium `1.20.0` · Gateway API `v1.6.1`
+(the supported Cilium bundle) · Argo CD `v3.4.6` / Helm chart `10.2.2` ·
+kopiur `0.9.2` · kube-prometheus-stack `88.1.3` · manually referenced images
+SHA-pinned and Helm charts version-pinned, Renovate-managed. The full
+compatibility table is in the
+[getting-started guide](docs/getting-started.md#tested-release-set-august-2026).
 
 ## Lineage
 

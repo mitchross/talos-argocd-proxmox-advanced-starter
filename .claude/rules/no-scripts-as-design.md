@@ -37,10 +37,9 @@ NOT to add another `verify-foo.sh`. The proper responses are:
    verification command.
 
 3. **A controller-runtime reconciler.** If the script is "if state is X,
-   do Y," that's a controller. Build one (operator-sdk, kubebuilder,
-   plain controller-runtime) — pvc-plumber itself is the canonical
-   example in this repo of "I had a bash script doing this in v1, now
-   it's a real operator in v2/v3."
+   do Y," that's a controller. Build one (operator-sdk, kubebuilder, or
+   controller-runtime). kopiur's Snapshot/Restore reconciliation is the
+   current example: desired state and status belong in CRs, not shell loops.
 
 ## When `scripts/` IS the right answer
 
@@ -48,10 +47,9 @@ There are two narrow cases:
 
 1. **One-shot bootstrap operations.** Things you do exactly once on a
    fresh cluster: the initial `bootstrap-argocd.sh` apply that registers
-   ArgoCD with itself, the `seal-secret.sh` that turns a generated
-   password into a SealedSecret committed to Git, the
-   `adapt-to-your-cluster.sh` that templates this starter's placeholder
-   tokens. These run once per cluster lifetime, then never again.
+   ArgoCD with itself and `adapt-to-your-cluster.sh`, which templates this
+   starter's non-secret profile. These run once per cluster lifetime, then
+   never again.
 
 2. **CI bridges.** Validation that has to run in a pre-merge gate but
    has no upstream equivalent yet. The

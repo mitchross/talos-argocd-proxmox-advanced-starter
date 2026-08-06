@@ -37,8 +37,8 @@ A `@sha256:<digest>` pin means:
 For most public registries, `crane` is the cleanest tool:
 
 ```bash
-crane digest ghcr.io/mitchross/pvc-plumber:3.1.0
-# → sha256:456f062a884bce71557c28b241e1b342426d885afd30b3172924f1a6d3e0cf1a
+crane digest nginx:1.31-alpine
+# → sha256:4a73073bd557c65b759505da037898b61f1be6cbcc3c2c3aeac22d2a470c1752
 ```
 
 For GHCR specifically, you can also query the GitHub API:
@@ -46,7 +46,7 @@ For GHCR specifically, you can also query the GitHub API:
 ```bash
 gh api -H "Accept: application/vnd.github+json" \
   /users/<org>/packages/container/<image>/versions \
-  | jq '.[] | select(.metadata.container.tags // [] | index("3.1.0")) | .name'
+  | jq '.[] | select(.metadata.container.tags // [] | index("<tag>")) | .name'
 ```
 
 For Docker Hub:
@@ -66,10 +66,10 @@ your final report so an operator with registry access can complete it.
 
 ```yaml
 # Bad (floating tag, no digest)
-image: ghcr.io/mitchross/pvc-plumber:3.1.0
+image: nginx:1.31-alpine
 
 # Good (tag + digest)
-image: ghcr.io/mitchross/pvc-plumber:3.1.0@sha256:456f062a884bce71557c28b241e1b342426d885afd30b3172924f1a6d3e0cf1a
+image: nginx:1.31-alpine@sha256:4a73073bd557c65b759505da037898b61f1be6cbcc3c2c3aeac22d2a470c1752
 ```
 
 Helm-rendered images are pinned via the `images:` field in
@@ -105,8 +105,8 @@ bumping just the digest. When upstream cuts a new tag, Renovate opens a
 PR bumping both tag and digest in one diff.
 
 Humans only need to look at the digest hash to verify Renovate is
-tracking the right image — the rule of thumb is "the PR title says
-3.1.0 → 3.1.1; the digest changed; great, merge it."
+tracking the right image — the rule of thumb is "the PR title names the
+expected release; the digest changed; test the rendered workload."
 
 ## Don't
 

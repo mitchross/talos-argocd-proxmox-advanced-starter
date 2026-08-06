@@ -5,6 +5,9 @@ namespace: 1passwordconnect
 commonAnnotations:
   argocd.argoproj.io/sync-wave: "0"
 
+resources:
+  - namespace.yaml
+
 helmCharts:
 - name: connect
   repo: https://1password.github.io/connect-helm-charts

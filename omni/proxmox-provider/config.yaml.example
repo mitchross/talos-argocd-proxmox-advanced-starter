@@ -9,7 +9,7 @@
 # storage selectors). See:
 #   https://github.com/siderolabs/omni-infra-provider-proxmox
 # Or refer to the source homelab template at:
-#   /docs/extending/adding-gpu-support.md
+#   ../../docs/extending/adding-gpu-support.md
 # for an example using GPU passthrough and multi-NIC storage networks.
 
 proxmox:
@@ -27,18 +27,20 @@ proxmox:
   # AUTHENTICATION — pick ONE of the two methods below.
   # ==============================================================================
 
-  # OPTION 1 (RECOMMENDED): API Token
+  # OPTION 1 (RECOMMENDED): API token
   # ---------------------------------
   # Create in Proxmox: Datacenter → Permissions → API Tokens
-  # IMPORTANT: uncheck "Privilege Separation" so the token inherits the user's
-  # full permissions (or grant the role explicitly to the token).
-  apiToken: "__REPLACE_ME_PROXMOX_TOKEN__"
-  # apiToken format: "user@realm!tokenid=token-secret"
-  # Example:         "root@pam!iac=01234567-89ab-cdef-0123-456789abcdef"
+  # v0.2.0 expects the token identity and secret as separate fields. With
+  # privilege separation enabled, grant the provider role to the token itself;
+  # otherwise it inherits the user's ACLs.
+  tokenID: "__REPLACE_ME_PROXMOX_TOKEN_ID__"
+  tokenSecret: "__REPLACE_ME_PROXMOX_TOKEN_SECRET__"
+  # tokenID example:     "omni@pve!provider"
+  # tokenSecret example: "01234567-89ab-cdef-0123-456789abcdef"
 
   # OPTION 2: Username/Password (easier for testing; less secure)
   # -------------------------------------------------------------
-  # Comment out apiToken above and uncomment these:
+  # Comment out tokenID/tokenSecret above and uncomment these:
   # username: "root"
   # password: "your-proxmox-password-here"
   # realm: "pam"  # pam = Linux users, pve = Proxmox users

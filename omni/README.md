@@ -33,8 +33,8 @@ omni/
 │   ├── .env.example        # Copy to .env, fill in OMNI_API_ENDPOINT + provider key
 │   └── config.yaml.example # Copy to config.yaml, fill in Proxmox URL + auth
 ├── machine-classes/        # `omnictl apply` these to register VM specs
-│   ├── control-plane.yaml  # 4c / 16G / 60G — for etcd nodes
-│   └── worker.yaml         # 8c / 32G / 200G — for workloads
+│   ├── control-plane.yaml  # 4c / 8G / 60G — for etcd nodes
+│   └── worker.yaml         # 8c / 24G / 200G — for workloads
 ├── cluster-template/
 │   └── cluster-template.yaml  # 1 CP + 2 workers; sync once with `omnictl cluster template sync -f`
 ├── bootstrap.sh            # Helper: apply machine-classes + cluster-template
@@ -64,9 +64,11 @@ omni/
    Talos, and assemble the cluster.
 6. **Pull the kubeconfig** from the Omni UI (or via `omnictl`) and
    verify `kubectl get nodes`.
-7. **Move to the repo root** and run
-   `scripts/bootstrap-argocd.sh` to install ArgoCD and the rest of
-   the GitOps stack.
+7. **Move to the repo root** and follow
+   [`docs/getting-started.md`](../docs/getting-started.md): install the pinned
+   Gateway API CRDs and Cilium, verify cross-node health, pre-seed the three
+   1Password secrets, then run `scripts/bootstrap-argocd.sh` to hand control to
+   Argo CD.
 
 ---
 
@@ -79,9 +81,9 @@ them all at once, or edit by hand.
 | Placeholder | Used in | Example |
 |---|---|---|
 | `__REPLACE_ME_DOMAIN__` | `omni/omni.env.example`, `proxmox-provider/.env.example` | `homelab.example.com` |
-| `__REPLACE_ME_OMNI_ENDPOINT__` | `proxmox-provider/.env.example` | `https://omni.homelab.example.com/` |
+| Omni API endpoint | `proxmox-provider/.env.example` (derived from `__REPLACE_ME_DOMAIN__`) | `https://omni.homelab.example.com/` |
 | `__REPLACE_ME_PROXMOX_HOST__` | `proxmox-provider/config.yaml.example` | `192.168.1.10` |
-| `__REPLACE_ME_PROXMOX_TOKEN__` | `proxmox-provider/config.yaml.example` | `root@pam!iac=abc123-...` |
+| `__REPLACE_ME_PROXMOX_TOKEN_ID__` + `__REPLACE_ME_PROXMOX_TOKEN_SECRET__` | ignored `proxmox-provider/config.yaml` only | `omni@pve!provider` + generated secret |
 | `__REPLACE_ME_PROXMOX_STORAGE_POOL__` | `machine-classes/*.yaml` | `local-zfs` |
 | `__REPLACE_ME_NODE_CIDR__` | `cluster-template/cluster-template.yaml` | `192.168.1.0/24` |
 
@@ -90,20 +92,21 @@ them all at once, or edit by hand.
 ## What's deliberately NOT here
 
 - **GPU machine class** — present in the source as `gpu-worker.yaml`, lifted to
-  `docs/extending/adding-gpu-support.md` as a recipe. Adds NVIDIA system
+  [`../docs/extending/adding-gpu-support.md`](../docs/extending/adding-gpu-support.md)
+  as a recipe. Adds NVIDIA system
   extensions, IOMMU PCI passthrough config, and a separate worker class.
 - **10G storage network** — the source's worker class includes a second
   NIC (`vmbr1`) attached to a TrueNAS over 10G DAC. The starter's worker
   class is single-NIC; if you have a separate storage network, see
-  `docs/extending/` for the additional-NICs pattern.
-- **Multi-disk workers** — same idea: simple by default; document the
-  shape for users who need it.
+  [`../docs/extending/additional-nics.md`](../docs/extending/additional-nics.md).
+- **Multi-disk workers** — same idea: simple by default; the complete provider
+  and Talos/Longhorn shape is in
+  [`../docs/extending/multi-disk-longhorn.md`](../docs/extending/multi-disk-longhorn.md).
 - **Aggressive sysctl tuning + etcd resource bumps** — the source's
   cluster template carries `inotify.max_user_watches=1048576`,
   `quota-backend-bytes=8589934592`, and similar production-cluster
   knobs. The starter ships defaults so a homelab Proxmox host doesn't
-  need pre-allocated hugepages, etc. Tuning recipe goes in
-  `docs/extending/`.
+  need pre-allocated hugepages or other host-specific tuning.
 
 ---
 
@@ -117,7 +120,9 @@ cd ..
 ./scripts/bootstrap-argocd.sh
 ```
 
-That installs Cilium, applies Gateway API CRDs, installs ArgoCD via
-Helm, and applies the root Application that takes over GitOps
-self-management. From there, ArgoCD discovers everything else from
-the directory tree and deploys it in sync-wave order.
+The bootstrap script verifies the already-installed Cilium release, installs
+Argo CD with Helm, and applies the root Application that takes over GitOps
+self-management. It does not install Cilium or Gateway API CRDs; those are the
+network foundation and are applied immediately beforehand using the exact
+commands in the getting-started guide. From there, Argo CD discovers everything
+else from the directory tree and deploys it in sync-wave order.

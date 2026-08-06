@@ -40,6 +40,12 @@ patches:
         value:
           kind: ClusterRepository
           name: cluster-kopia
+      - op: add
+        path: /spec/deletion
+        value:
+          # Keep repository data if a policy is removed during a GitOps/DR
+          # transition. Deletion is always an explicit operator decision.
+          onPolicyDelete: Retain
   # --- SnapshotSchedule: uniform scheduling --------------------------------
   - target:
       kind: SnapshotSchedule

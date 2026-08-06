@@ -10,12 +10,15 @@ A **starter kit pruned from a live production homelab**
 doubt about a pattern, the parent repo and its docs site
 (https://mitchross.github.io/talos-argocd-proxmox/) are the source of truth.
 
+Stack: Talos (via Omni/Proxmox) + self-managing ArgoCD + Cilium Gateway API
++ Longhorn + **kopiur** (PVC backups, restore-before-bind) + CNPG/Barman
+(Postgres) + 1Password/ESO (secrets) + off-cluster RustFS S3.
+
 ## Critical rules (inherited from the parent, all field-tested)
 
 - **Directory = Application.** AppSets discover `my-apps/*/*`,
   `infrastructure/database/*/*`, `monitoring/*`; infrastructure uses an
-  EXPLICIT path list in
-  `infrastructure/controllers/argocd/apps/appsets/infrastructure-appset.yaml`. Never write
+  EXPLICIT path list in `appsets/infrastructure-appset.yaml`. Never write
   manual `Application` manifests for apps.
 - **ApplicationSets fail closed.** Keep strict Go templates with
   `missingkey=error`, exclude shared Component directories, and retain
@@ -71,11 +74,16 @@ python3 scripts/validate-gateway-contracts.py /tmp/rendered-manifests.yaml
 python3 scripts/validate-prometheus-rules.py
 ```
 
-## Reference examples in-tree
+CI intentionally matches the Argo CD v3.4.6 repo-server toolchain:
+Kustomize 5.8.1 and Helm 3.19.4, with kubeconform 0.8.0 against Kubernetes
+1.36.3 schemas.
 
-See README's "The dependency ladder" section for the per-app reference map. Two examples the README doesn't cover:
+## Reference examples in-tree
 
 | Pattern | Where |
 |---|---|
+| Minimal app | `my-apps/development/nginx/` |
+| kopiur backup + deliberate exempt (one app, both) | `my-apps/media/karakeep/` |
+| Helm+Kustomize, external route, helm-PVC dataSourceRef patch | `my-apps/development/gitea/` |
 | CNPG database (initdb/recovery overlays, lineage) | `infrastructure/database/cloudnative-pg/gitea/` |
 | Shared backup component | `my-apps/common/kopiur-backup/` |

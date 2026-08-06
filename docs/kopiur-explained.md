@@ -58,7 +58,7 @@ turns on both the credential fan-out and repo tenancy.
 Drill it (this is also getting-started's final step):
 
 ```bash
-kubectl -n karakeep get snapshot                       # Completed, non-zero files
+kubectl -n karakeep get snapshot                       # Succeeded, non-zero files
 kubectl -n karakeep get secret kopiur-rustfs           # credential fan-out works
 kubectl -n karakeep scale deploy/karakeep-web --replicas=0
 kubectl -n karakeep delete pvc data-pvc

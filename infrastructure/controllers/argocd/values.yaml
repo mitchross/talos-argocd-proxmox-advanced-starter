@@ -249,7 +249,7 @@ repoServer:
   # CPU-bound (manifest generation) but low memory (template processing)
   resources:
     requests:
-      cpu: 1000m   # single-node: low reservation; bursts to 4000m limit on big renders
+      cpu: 1000m   # conservative reservation; bursts to 4000m on large renders
       memory: 768Mi  # Reduced from 1Gi (VPA target only 523Mi)
     limits:
       cpu: 4000m   # Keep at 4000m (VPA upperBound: 28+ cores during Prometheus chart)

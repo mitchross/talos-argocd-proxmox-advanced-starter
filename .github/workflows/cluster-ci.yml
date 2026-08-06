@@ -30,13 +30,13 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Match the binaries bundled in Argo CD v3.4.5. Renderer changes are
+  # Match the binaries bundled in Argo CD v3.4.6. Renderer changes are
   # deployment changes when Kustomize inflates Helm charts.
   KUSTOMIZE_VERSION: 5.8.1
   HELM_VERSION: 3.19.4
-  KUBECONFORM_VERSION: v0.7.0
-  KUBERNETES_VERSION: 1.36.2
-  PROMETHEUS_VERSION: 3.12.0
+  KUBECONFORM_VERSION: v0.8.0
+  KUBERNETES_VERSION: 1.36.3
+  PROMETHEUS_VERSION: 3.13.2
 
 jobs:
   argocd-structure:

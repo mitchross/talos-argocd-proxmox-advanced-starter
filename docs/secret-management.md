@@ -14,6 +14,10 @@ name. Swapping ESO's backend (Vault, AWS SM, Doppler, …) means changing the
 and recreating the same item *fields* in your backend — every consuming
 manifest stays untouched.
 
+Setting up the 1Password side for the first time — vault, Connect server,
+credentials file, token — is [1password-setup.md](1password-setup.md). This
+page assumes that is done and covers what the cluster reads.
+
 ## The two bootstrap secrets (manual, once)
 
 ESO can't fetch credentials for the thing that serves credentials. Before
