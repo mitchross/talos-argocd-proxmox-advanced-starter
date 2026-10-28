@@ -1,16 +1,10 @@
 // Renovate configuration for the talos-argocd-proxmox-advanced-starter.
 //
-// This config is opinionated: it auto-merges minor + patch bumps for
-// helm-values, kubernetes, kustomize, and argocd managers. Major bumps
-// always require human review. The `automergeType: 'pr'` setting (NOT
-// 'branch') routes auto-merges through PRs so CI always runs and the
-// audit log is in PR descriptions — a 2026-05-08 lesson from the source
-// cluster: branch automerge bypasses the PR template + CI checks and
-// makes incident retrospectives much harder.
+// Group routine updates by Application; require manual merge after CI.
 //
 // Companion doc: ../docs/dockerhub-rate-limit-mitigation.md
 //   — covers the host_rules JSON pattern, the 200/6h authenticated
-//     free-tier ceiling, abortIgnoreStatusCodes, daily docker schedule,
+//     free-tier ceiling, abortIgnoreStatusCodes, Docker Hub scheduling,
 //     and the automergeType: pr rationale.
 //
 // Also see .claude/rules/always-pin-sha.md — every image ref in this
@@ -25,6 +19,8 @@
   // Cap concurrency. Three PRs at a time across the whole repo is plenty
   // for a homelab; bumping this turns Renovate into a notification
   // firehose during chart-release weeks.
+  automerge: false,
+  timezone: 'America/Detroit',
   prHourlyLimit: 3,
 
   // Stable identifier in PR titles + Dependency Dashboard. Default is
@@ -69,11 +65,25 @@
   },
 
   packageRules: [
+    {
+      description: 'Group routine updates weekly per Application; later rules preserve protected groups.',
+      matchUpdateTypes: ['minor', 'patch', 'digest', 'pin', 'pinDigest'],
+      groupName: 'weekly {{{replace "^((?:infrastructure/database/[^/]+/[^/]+|(?:my-apps|infrastructure)/[^/]+/[^/]+|monitoring/[^/]+))(?:/.*)?$" "$1" packageFileDir}}} updates',
+      // Override inherited monorepo slugs with the rendered Application group name.
+      groupSlug: '{{groupName}}',
+      schedule: ['* 0-5 * * 1'],
+    },
+    {
+      description: 'Keep infrastructure upgrades separate from routine updates.',
+      matchPackageNames: ['cilium', 'longhorn', 'kube-prometheus-stack', 'argo-cd', 'cloudnative-pg', 'ghcr.io/cloudnative-pg/postgresql', 'ghcr.io/siderolabs/installer', 'ghcr.io/siderolabs/kubelet'],
+      groupName: 'weekly {{{replace "^((?:infrastructure/database/[^/]+/[^/]+|(?:my-apps|infrastructure)/[^/]+/[^/]+|monitoring/[^/]+))(?:/.*)?$" "$1" packageFileDir}}} {{depName}} updates',
+      groupSlug: '{{groupName}}',
+    },
     // ─────────────────────────────────────────────────────────────────
-    // Auto-merge policy: minor + patch yes, major no.
+    // Require manual merge for every update type.
     // ─────────────────────────────────────────────────────────────────
     {
-      description: 'Auto-merge minor + patch bumps via PR (NOT branch). Branch automerge bypasses CI + PR audit trail.',
+      description: 'Review minor and patch updates after CI.',
       matchUpdateTypes: ['minor', 'patch'],
       matchManagers: [
         'helm-values',
@@ -81,7 +91,7 @@
         'kustomize',
         'argocd',
       ],
-      automerge: true,
+      automerge: false,
       automergeType: 'pr',
     },
     {
@@ -133,10 +143,10 @@
       prCreation: 'immediate',
     },
     {
-      description: 'CNPG postgres image — auto-merge minor/patch + digest via PR. Paired with the customManager that picks up spec.imageName.',
+      description: 'CNPG Postgres image updates require manual review; the custom manager reads spec.imageName.',
       matchPackageNames: ['ghcr.io/cloudnative-pg/postgresql'],
       matchUpdateTypes: ['minor', 'patch', 'digest'],
-      automerge: true,
+      automerge: false,
       automergeType: 'pr',
     },
 
@@ -152,13 +162,8 @@
       enabled: true,
     },
 
-    // ─────────────────────────────────────────────────────────────────
-    // Docker Hub schedule — fetch only once a day to stay well under
-    // the 200/6h authenticated free-tier rate limit. See
-    // dockerhub-rate-limit-mitigation.md for the math.
-    // ─────────────────────────────────────────────────────────────────
     {
-      description: 'Schedule Docker Hub lookups daily to avoid rate-limit blowouts.',
+      description: 'Docker Hub updates join the weekly batch.',
       matchDatasources: ['docker'],
       matchPackageNames: [
         '/^docker\\.io\\//',
@@ -166,7 +171,14 @@
         // these to docker.io by default.
         '/^[a-z0-9_-]+(\\/[a-z0-9_-]+)?$/',
       ],
-      schedule: ['after 9am and before 5pm every weekday'],
+      schedule: ['* 0-5 * * 1'],
+    },
+    {
+      description: 'Review major upgrades separately from routine updates and each other.',
+      matchUpdateTypes: ['major'],
+      groupName: null,
+      groupSlug: null,
+      automerge: false,
     },
   ],
 
