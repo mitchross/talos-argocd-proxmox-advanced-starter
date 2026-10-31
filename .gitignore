@@ -50,3 +50,7 @@ omni/proxmox-provider/config.yaml
 # Test artifacts
 *.test
 coverage.out
+
+# Agent-managed worktrees (Claude Code, Hermes)
+.claude/worktrees/
+.worktrees/
