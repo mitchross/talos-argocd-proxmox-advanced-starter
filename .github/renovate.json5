@@ -21,16 +21,21 @@
   extends: [
     'config:recommended',
   ],
+  // Security fixes: own PR, [SECURITY] title, `security` label, skip the schedule.
+  vulnerabilityAlerts: {
+    addLabels: ['security'],
+  },
+  osvVulnerabilityAlerts: true,
+  dependencyDashboard: {
+    enabled: true,
+    osvVulnerabilitySummary: 'unresolved',
+    title: 'Renovate Dependency Dashboard',
+  },
 
   // Cap concurrency. Three PRs at a time across the whole repo is plenty
   // for a homelab; bumping this turns Renovate into a notification
   // firehose during chart-release weeks.
   prHourlyLimit: 3,
-
-  // Stable identifier in PR titles + Dependency Dashboard. Default is
-  // fine but explicit is better.
-  dependencyDashboard: true,
-  dependencyDashboardTitle: 'Renovate Dependency Dashboard',
 
   enabledManagers: [
     'helm-values',
